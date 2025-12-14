@@ -172,6 +172,17 @@ export const CreateBuyerLinkSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Upload file schema
+export const UploadFileSchema = z.object({
+  filePath: z.string()
+    .min(1, "File path cannot be empty")
+    .describe("Path to the CSV file to upload"),
+  fileName: z.string()
+    .optional()
+    .describe("Optional filename override (defaults to basename of filePath)"),
+  response_format: ResponseFormatSchema
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -185,3 +196,4 @@ export type GetSuppliersForBuyerInput = z.infer<typeof GetSuppliersForBuyerSchem
 export type GetBuyersForSupplierInput = z.infer<typeof GetBuyersForSupplierSchema>;
 export type CreateBuyerLinkInput = z.infer<typeof CreateBuyerLinkSchema>;
 export type CreateBuyerInput = z.infer<typeof CreateBuyerSchema>;
+export type UploadFileInput = z.infer<typeof UploadFileSchema>;

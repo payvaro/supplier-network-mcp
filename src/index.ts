@@ -21,6 +21,7 @@ import {
   GetBuyersForSupplierSchema,
   CreateBuyerLinkSchema,
   CreateBuyerSchema,
+  UploadFileSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -30,6 +31,7 @@ import {
   getSupplier,
   getSuppliersByDate,
   getSupplierHistory,
+  uploadFile,
 } from "./tools/suppliers.js";
 
 import {
@@ -422,6 +424,30 @@ function createServer() {
             required: ["clientId"],
           },
         },
+        {
+          name: "network_upload_file",
+          description: "Upload a CSV file to the network API for processing.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              filePath: {
+                type: "string",
+                description: "Path to the CSV file to upload",
+              },
+              fileName: {
+                type: "string",
+                description: "Optional filename override (defaults to basename of filePath)",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["filePath"],
+          },
+        },
       ],
     };
   });
@@ -492,6 +518,11 @@ function createServer() {
         case "network_create_buyer": {
           const params = CreateBuyerSchema.parse(args);
           return await createBuyer(params);
+        }
+
+        case "network_upload_file": {
+          const params = UploadFileSchema.parse(args);
+          return await uploadFile(params);
         }
 
         default:

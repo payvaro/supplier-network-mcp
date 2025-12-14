@@ -12,7 +12,8 @@ import type {
   ListSuppliersInput,
   GetSupplierInput,
   GetSuppliersByDateInput,
-  GetSupplierHistoryInput
+  GetSupplierHistoryInput,
+  UploadFileInput
 } from "../schemas/index.js";
 import type { SearchResult, SupplierListResult } from "../types.js";
 
@@ -224,6 +225,69 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput) {
       params.response_format,
       () => {
         return `# Supplier History: ${params.id}\n\nFormat: ${params.format}\n\n${JSON.stringify(history, null, 2)}`;
+      }
+    );
+
+    return {
+      content: [{
+        type: "text" as const,
+        text: formatted.text
+      }],
+      structuredContent: formatted.structuredData
+    };
+
+  } catch (error) {
+    const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
+    return {
+      isError: true,
+      content: [{
+        type: "text" as const,
+        text: errorResponse.text
+      }]
+    };
+  }
+}
+
+/**
+ * Upload a CSV file to the network API
+ */
+export async function uploadFile(params: UploadFileInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const result = await client.uploadFile(params.filePath, params.fileName);
+
+    const formatted = formatOutput(
+      result,
+      params.response_format,
+      () => {
+        const parts = [
+          "# File Upload Successful",
+          "",
+          "✅ Successfully uploaded file to the network API",
+          "",
+          "## Upload Details",
+          ""
+        ];
+
+        if (params.fileName) {
+          parts.push(`**Filename:** ${params.fileName}`);
+        } else {
+          const pathParts = params.filePath.split("/");
+          parts.push(`**Filename:** ${pathParts[pathParts.length - 1]}`);
+        }
+        parts.push(`**File Path:** ${params.filePath}`);
+
+        // Add any metadata from the API response
+        if (result && typeof result === "object") {
+          parts.push("");
+          parts.push("## Upload Response");
+          parts.push("");
+          parts.push("```json");
+          parts.push(JSON.stringify(result, null, 2));
+          parts.push("```");
+        }
+
+        return parts.join("\n");
       }
     );
 

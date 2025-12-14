@@ -1,4 +1,6 @@
 import axios, { AxiosInstance, AxiosError } from "axios";
+import { promises as fs } from "fs";
+import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER } from "../constants.js";
 import type { Supplier, Buyer, BuyerLink, AggregatorLink } from "../types.js";
 
@@ -267,6 +269,51 @@ export class NetworkAPIClient {
       );
       return response.data;
     } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Upload a file to the network API
+   */
+  async uploadFile(filePath: string, fileName?: string): Promise<unknown> {
+    try {
+      // Read the file from the filesystem
+      const fileBuffer = await fs.readFile(filePath);
+      
+      // Determine the filename (use provided or extract from path)
+      const finalFileName = fileName || path.basename(filePath);
+      
+      // Create FormData (Node.js 18+ has built-in FormData)
+      const formData = new FormData();
+      // Create a Blob from the buffer (Blob is available in Node.js 15.7.0+)
+      const blob = new Blob([fileBuffer], { type: "text/csv" });
+      // Append blob with filename (Node.js FormData supports this)
+      formData.append("file", blob, finalFileName);
+      
+      // Make POST request with multipart/form-data
+      // Note: axios will automatically detect FormData and set Content-Type with boundary
+      // We create a custom config to override the default Content-Type header
+      const headers: Record<string, string> = {};
+      if (this.apiKey) {
+        headers[AUTH_HEADER] = this.apiKey;
+      }
+      
+      const response = await this.client.post<unknown>("/api/files/upload", formData, {
+        headers,
+        // Transform request to ensure FormData is handled correctly
+        transformRequest: [(data) => data],
+      });
+      
+      return response.data;
+    } catch (error) {
+      // Handle file system errors
+      if (error instanceof Error && (error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EACCES") {
+        throw new Error(`Permission denied: Cannot read file ${filePath}`);
+      }
       throw this.handleError(error);
     }
   }
