@@ -90,6 +90,39 @@ export const ListBuyersSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Create buyer schema
+export const CreateBuyerSchema = z.object({
+  name: z.string()
+    .optional()
+    .describe("Buyer name"),
+  franchiseName: z.string()
+    .optional()
+    .describe("Franchise name"),
+  storeIdentifier: z.string()
+    .optional()
+    .describe("Store identifier"),
+  clientId: z.string()
+    .min(1, "Client ID cannot be empty")
+    .describe("External client reference identifier"),
+  status: z.string()
+    .optional()
+    .describe("Buyer status"),
+  addresses: z.array(AddressSchema)
+    .optional()
+    .describe("Buyer addresses"),
+  contacts: z.array(z.object({
+    name: z.string().optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    position: z.string().optional(),
+    title: z.string().optional(),
+    type: z.enum(["PRIMARY", "SECONDARY", "OTHER"]).optional()
+  }))
+    .optional()
+    .describe("Buyer contacts"),
+  response_format: ResponseFormatSchema
+}).strict();
+
 // Get buyer schema
 export const GetBuyerSchema = z.object({
   id: z.string()
@@ -122,6 +155,23 @@ export const GetBuyersForSupplierSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Create buyer link schema
+export const CreateBuyerLinkSchema = z.object({
+  buyerId: z.string()
+    .min(1, "Buyer ID cannot be empty")
+    .describe("Unique buyer identifier"),
+  supplierId: z.string()
+    .min(1, "Supplier ID cannot be empty")
+    .describe("Unique supplier identifier"),
+  buyerSupplierRefId: z.string()
+    .optional()
+    .describe("External reference ID for the buyer-supplier relationship"),
+  buyerRefKey: z.string()
+    .optional()
+    .describe("Reference key for the buyer-supplier relationship"),
+  response_format: ResponseFormatSchema
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -133,3 +183,5 @@ export type GetBuyerInput = z.infer<typeof GetBuyerSchema>;
 export type GetBuyerByClientIdInput = z.infer<typeof GetBuyerByClientIdSchema>;
 export type GetSuppliersForBuyerInput = z.infer<typeof GetSuppliersForBuyerSchema>;
 export type GetBuyersForSupplierInput = z.infer<typeof GetBuyersForSupplierSchema>;
+export type CreateBuyerLinkInput = z.infer<typeof CreateBuyerLinkSchema>;
+export type CreateBuyerInput = z.infer<typeof CreateBuyerSchema>;

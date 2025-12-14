@@ -19,6 +19,8 @@ import {
   GetBuyerByClientIdSchema,
   GetSuppliersForBuyerSchema,
   GetBuyersForSupplierSchema,
+  CreateBuyerLinkSchema,
+  CreateBuyerSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -36,6 +38,8 @@ import {
   getBuyerByClientId,
   getSuppliersForBuyer,
   getBuyersForSupplier,
+  createBuyerLink,
+  createBuyer,
 } from "./tools/buyers.js";
 
 /**
@@ -317,6 +321,107 @@ function createServer() {
             required: ["supplierId"],
           },
         },
+        {
+          name: "network_create_buyer_link",
+          description: "Create a link between a buyer and supplier. Returns an error if the link already exists.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              buyerId: {
+                type: "string",
+                description: "Unique buyer identifier",
+              },
+              supplierId: {
+                type: "string",
+                description: "Unique supplier identifier",
+              },
+              buyerSupplierRefId: {
+                type: "string",
+                description: "External reference ID for the buyer-supplier relationship",
+              },
+              buyerRefKey: {
+                type: "string",
+                description: "Reference key for the buyer-supplier relationship",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["buyerId", "supplierId"],
+          },
+        },
+        {
+          name: "network_create_buyer",
+          description: "Create a new buyer in the network.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description: "Buyer name",
+              },
+              franchiseName: {
+                type: "string",
+                description: "Franchise name",
+              },
+              storeIdentifier: {
+                type: "string",
+                description: "Store identifier",
+              },
+              clientId: {
+                type: "string",
+                description: "External client reference identifier",
+              },
+              status: {
+                type: "string",
+                description: "Buyer status",
+              },
+              addresses: {
+                type: "array",
+                description: "Buyer addresses",
+                items: {
+                  type: "object",
+                  properties: {
+                    streetAddress: { type: "string" },
+                    city: { type: "string" },
+                    stateProvince: { type: "string" },
+                    postalCode: { type: "string" },
+                    suiteUnit: { type: "string" },
+                    addressType: { type: "string" },
+                  },
+                },
+              },
+              contacts: {
+                type: "array",
+                description: "Buyer contacts",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    email: { type: "string" },
+                    phone: { type: "string" },
+                    position: { type: "string" },
+                    title: { type: "string" },
+                    type: {
+                      type: "string",
+                      enum: ["PRIMARY", "SECONDARY", "OTHER"],
+                    },
+                  },
+                },
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["clientId"],
+          },
+        },
       ],
     };
   });
@@ -377,6 +482,16 @@ function createServer() {
         case "network_get_buyers_for_supplier": {
           const params = GetBuyersForSupplierSchema.parse(args);
           return await getBuyersForSupplier(params);
+        }
+
+        case "network_create_buyer_link": {
+          const params = CreateBuyerLinkSchema.parse(args);
+          return await createBuyerLink(params);
+        }
+
+        case "network_create_buyer": {
+          const params = CreateBuyerSchema.parse(args);
+          return await createBuyer(params);
         }
 
         default:

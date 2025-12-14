@@ -182,6 +182,18 @@ export class NetworkAPIClient {
   }
 
   /**
+   * Create a new buyer
+   */
+  async createBuyer(buyer: Partial<Buyer>): Promise<Buyer> {
+    try {
+      const response = await this.client.post<Buyer>("/api/buyers", buyer);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Get suppliers linked to a buyer
    */
   async getSuppliersForBuyer(buyerId: string): Promise<Supplier[]> {
