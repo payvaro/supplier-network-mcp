@@ -141,3 +141,66 @@ export interface BuyerListResult {
   count: number;
   [key: string]: unknown;
 }
+
+// Network analysis types
+export interface ConnectionStatistics {
+  totalBuyers: number;
+  totalSuppliers: number;
+  totalLinks: number;
+  averageSuppliersPerBuyer: number;
+  averageBuyersPerSupplier: number;
+  buyersWithLinks: number;
+  suppliersWithLinks: number;
+  connectionDistribution: {
+    buyers: Record<number, number>; // connection count -> number of buyers
+    suppliers: Record<number, number>; // connection count -> number of suppliers
+  };
+}
+
+export interface IsolatedNode {
+  id: string;
+  name?: string;
+  type: "buyer" | "supplier";
+  clientId?: string;
+  [key: string]: unknown;
+}
+
+export interface ConnectionSuggestion {
+  buyerId: string;
+  supplierId: string;
+  buyerName?: string;
+  supplierName?: string;
+  reason: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface NetworkMetrics {
+  density: number; // actual links / possible links
+  coverage: number; // % of nodes with at least one connection
+  buyerCoverage: number; // % of buyers with at least one link
+  supplierCoverage: number; // % of suppliers with at least one link
+}
+
+export interface NetworkHub {
+  id: string;
+  name?: string;
+  type: "buyer" | "supplier";
+  connectionCount: number;
+  clientId?: string;
+  [key: string]: unknown;
+}
+
+export interface NetworkAnalysisResult {
+  summary: ConnectionStatistics;
+  isolatedNodes: {
+    buyers: IsolatedNode[];
+    suppliers: IsolatedNode[];
+  };
+  hubs: {
+    topBuyers: NetworkHub[];
+    topSuppliers: NetworkHub[];
+  };
+  suggestions?: ConnectionSuggestion[];
+  metrics: NetworkMetrics;
+  generatedAt: string;
+}

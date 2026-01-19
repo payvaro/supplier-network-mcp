@@ -2,7 +2,11 @@
 export const DEFAULT_BASE_URL = "http://localhost:8080";
 
 // Authentication
-export const AUTH_HEADER = "X-API-Key";
+export const AUTH_HEADER = "Authorization";
+export const CLIENT_ID_HEADER = "x-client-id";
+
+// Slack Configuration
+export const DEFAULT_SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 
 // Response formatting
 export const CHARACTER_LIMIT = 10000;
