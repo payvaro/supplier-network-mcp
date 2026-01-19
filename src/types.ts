@@ -92,6 +92,19 @@ export interface ErrorResponse {
   error?: string;
 }
 
+// Pagination types
+export interface PaginationInfo {
+  count: number;
+  pageSize: number;
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  pagination: PaginationInfo;
+}
+
 export interface ValidationError {
   field?: string;
   message?: string;
@@ -133,6 +146,7 @@ export interface SearchResult {
 export interface SupplierListResult {
   suppliers: Supplier[];
   count: number;
+  pagination?: PaginationInfo;
   [key: string]: unknown;
 }
 

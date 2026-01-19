@@ -22,7 +22,6 @@ import {
   CreateBuyerLinkSchema,
   CreateBuyerSchema,
   UploadFileSchema,
-  NetworkAnalysisSchema,
   SlackNotificationSchema,
 } from "./schemas/index.js";
 
@@ -47,7 +46,6 @@ import {
 } from "./tools/buyers.js";
 
 import {
-  analyzeNetworkConnections,
   notifySlack,
 } from "./tools/analysis.js";
 
@@ -148,14 +146,20 @@ function createServer() {
         },
         {
           name: "network_list_suppliers",
-          description: "List all suppliers in the network.",
+          description: "List suppliers for the authenticated client with pagination support.",
           inputSchema: {
             type: "object",
             properties: {
-              includeLinks: {
-                type: "boolean",
-                description: "Include buyer and aggregator relationship links",
-                default: false,
+              pageSize: {
+                type: "number",
+                description: "Number of suppliers to return per page (1-100)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for fetching the next page of results",
               },
               response_format: {
                 type: "string",
@@ -460,35 +464,6 @@ function createServer() {
           },
         },
         {
-          name: "network_analyze_connections",
-          description:
-            "Comprehensive network analysis tool that analyzes buyer-supplier relationships. Combines multiple data sources to provide statistics, identify isolated nodes, find network hubs, and suggest potential connections.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              includeSuggestions: {
-                type: "boolean",
-                description:
-                  "Whether to include connection suggestions in the analysis",
-                default: true,
-              },
-              minConnectionsForHub: {
-                type: "number",
-                description:
-                  "Minimum number of connections required to be considered a network hub",
-                default: 5,
-                minimum: 1,
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
           name: "network_notify_slack",
           description:
             "Post network analysis results to Slack via webhook for team decision-making. Takes the structured result from network_analyze_connections and formats it as a Slack message.",
@@ -628,12 +603,6 @@ function createServer() {
         case "network_upload_file": {
           const params = UploadFileSchema.parse(args);
           response = await uploadFile(params);
-          break;
-        }
-
-        case "network_analyze_connections": {
-          const params = NetworkAnalysisSchema.parse(args);
-          response = await analyzeNetworkConnections(params);
           break;
         }
 

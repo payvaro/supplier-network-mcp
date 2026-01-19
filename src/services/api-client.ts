@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER, CLIENT_ID_HEADER } from "../constants.js";
-import type { Supplier, Buyer, BuyerLink, AggregatorLink } from "../types.js";
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, PaginatedResponse } from "../types.js";
 
 /**
  * Sanitizes an API key for use in HTTP headers by removing invalid characters.
@@ -189,13 +189,29 @@ export class NetworkAPIClient {
   }
 
   /**
-   * List all suppliers
+   * List suppliers for the authenticated client with pagination
    */
-  async listSuppliers(includeLinks: boolean = false): Promise<Supplier[]> {
+  async listSuppliers(pageSize: number = 20, cursor?: string): Promise<PaginatedResponse<Supplier>> {
     try {
-      const response = await this.client.get<Supplier[]>("/api/suppliers", {
-        params: { includeLinks }
+      const params: Record<string, unknown> = { pageSize };
+      if (cursor) {
+        params.cursor = cursor;
+      }
+      const response = await this.client.get<PaginatedResponse<Supplier>>("/api/my/suppliers", {
+        params
       });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get all suppliers (for search/analysis - uses different endpoint)
+   */
+  async getAllSuppliers(): Promise<Supplier[]> {
+    try {
+      const response = await this.client.get<Supplier[]>("/api/suppliers");
       return response.data;
     } catch (error) {
       throw this.handleError(error);

@@ -51,9 +51,15 @@ export const SupplierSearchSchema = z.object({
 
 // List suppliers schema
 export const ListSuppliersSchema = z.object({
-  includeLinks: z.boolean()
-    .default(false)
-    .describe("Include buyer and aggregator relationship links in results"),
+  pageSize: z.number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe("Number of suppliers to return per page (1-100)"),
+  cursor: z.string()
+    .optional()
+    .describe("Pagination cursor for fetching the next page of results"),
   response_format: ResponseFormatSchema
 }).strict();
 

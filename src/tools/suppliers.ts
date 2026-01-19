@@ -25,7 +25,7 @@ export async function searchSuppliers(params: SupplierSearchInput) {
     const client = getNetworkAPIClient();
 
     // Get all suppliers (we'll filter client-side with fuzzy matching)
-    const allSuppliers = await client.listSuppliers(false);
+    const allSuppliers = await client.getAllSuppliers();
 
     // Normalize address if provided
     const searchAddress = params.address ? normalizeAddress(params.address) : undefined;
@@ -90,22 +90,37 @@ export async function searchSuppliers(params: SupplierSearchInput) {
 }
 
 /**
- * List all suppliers
+ * List suppliers with pagination
  */
 export async function listSuppliers(params: ListSuppliersInput) {
   try {
     const client = getNetworkAPIClient();
-    const suppliers = await client.listSuppliers(params.includeLinks);
+    const paginatedResponse = await client.listSuppliers(params.pageSize, params.cursor);
 
     const result: SupplierListResult = {
-      suppliers,
-      count: suppliers.length
+      suppliers: paginatedResponse.items,
+      count: paginatedResponse.pagination.count,
+      pagination: paginatedResponse.pagination
     };
 
     const formatted = formatOutput(
       result,
       params.response_format,
-      () => formatSupplierListMarkdown(suppliers)
+      () => {
+        const parts = [
+          formatSupplierListMarkdown(paginatedResponse.items),
+          "",
+          "---",
+          "",
+          `**Page Info:** ${paginatedResponse.pagination.count} supplier(s) returned | Page size: ${paginatedResponse.pagination.pageSize}`
+        ];
+        if (paginatedResponse.pagination.hasMore && paginatedResponse.pagination.nextCursor) {
+          parts.push(`**Next cursor:** \`${paginatedResponse.pagination.nextCursor}\``);
+        } else {
+          parts.push("**End of results**");
+        }
+        return parts.join("\n");
+      }
     );
 
     return {
