@@ -38,6 +38,7 @@ export async function analyzeNetworkConnections(
       structuredContent: formatted.structuredData,
     };
   } catch (error) {
+    console.error('analyzeNetworkConnections error:', error);
     const errorResponse = createErrorResponse(
       error instanceof Error ? error.message : String(error)
     );
@@ -76,11 +77,17 @@ function formatAnalysisMarkdown(result: NetworkAnalysisResult): string {
   parts.push(
     `**Average Buyers per Supplier:** ${result.summary.averageBuyersPerSupplier.toFixed(2)}`
   );
+  const buyerPercent = result.summary.totalBuyers > 0
+    ? ((result.summary.buyersWithLinks / result.summary.totalBuyers) * 100).toFixed(1)
+    : '0.0';
+  const supplierPercent = result.summary.totalSuppliers > 0
+    ? ((result.summary.suppliersWithLinks / result.summary.totalSuppliers) * 100).toFixed(1)
+    : '0.0';
   parts.push(
-    `**Buyers with Links:** ${result.summary.buyersWithLinks} (${((result.summary.buyersWithLinks / result.summary.totalBuyers) * 100).toFixed(1)}%)`
+    `**Buyers with Links:** ${result.summary.buyersWithLinks} (${buyerPercent}%)`
   );
   parts.push(
-    `**Suppliers with Links:** ${result.summary.suppliersWithLinks} (${((result.summary.suppliersWithLinks / result.summary.totalSuppliers) * 100).toFixed(1)}%)`
+    `**Suppliers with Links:** ${result.summary.suppliersWithLinks} (${supplierPercent}%)`
   );
   parts.push("");
 
@@ -218,7 +225,7 @@ export async function notifySlack(params: SlackNotificationInput) {
       { success: true, message: "Successfully posted to Slack" },
       params.response_format,
       () => {
-        return `# Slack Notification Sent\n\n✅ Successfully posted network analysis summary to Slack.\n\n**Webhook URL:** ${webhookUrl.substring(0, 50)}...\n**Include Details:** ${params.includeDetails ? "Yes" : "No"}`;
+        return `# Slack Notification Sent\n\n✅ Successfully posted network analysis summary to Slack.\n\n**Include Details:** ${params.includeDetails ? "Yes" : "No"}`;
       }
     );
 
@@ -232,6 +239,7 @@ export async function notifySlack(params: SlackNotificationInput) {
       structuredContent: formatted.structuredData,
     };
   } catch (error) {
+    console.error('notifySlack error:', error);
     const errorResponse = createErrorResponse(
       error instanceof Error ? error.message : String(error)
     );

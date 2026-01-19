@@ -78,6 +78,7 @@ export async function searchSuppliers(params: SupplierSearchInput) {
     };
 
   } catch (error) {
+    console.error('searchSuppliers error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -132,6 +133,7 @@ export async function listSuppliers(params: ListSuppliersInput) {
     };
 
   } catch (error) {
+    console.error('listSuppliers error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -166,6 +168,7 @@ export async function getSupplier(params: GetSupplierInput) {
     };
 
   } catch (error) {
+    console.error('getSupplier error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -216,6 +219,7 @@ export async function getSuppliersByDate(params: GetSuppliersByDateInput) {
     };
 
   } catch (error) {
+    console.error('getSuppliersByDate error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -252,6 +256,7 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput) {
     };
 
   } catch (error) {
+    console.error('getSupplierHistory error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -315,6 +320,7 @@ export async function uploadFile(params: UploadFileInput) {
     };
 
   } catch (error) {
+    console.error('uploadFile error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,

@@ -55,28 +55,39 @@ export function normalizeAnalysisResult(
   let summary = obj.summary as NetworkAnalysisResult["summary"] | undefined;
   if (!summary || typeof summary !== "object") {
     // Try to construct from available data at root level or from summary object
-    const existingSummary = typeof obj.summary === "object" && obj.summary !== null 
+    const existingSummary = typeof obj.summary === "object" && obj.summary !== null
       ? obj.summary as Record<string, unknown>
       : null;
-    
-    const totalBuyers =
-      typeof obj.totalBuyers === "number"
-        ? obj.totalBuyers
-        : typeof existingSummary?.totalBuyers === "number"
-          ? existingSummary.totalBuyers
-          : 0;
-    const totalSuppliers =
-      typeof obj.totalSuppliers === "number"
-        ? obj.totalSuppliers
-        : typeof existingSummary?.totalSuppliers === "number"
-          ? existingSummary.totalSuppliers
-          : 0;
-    const totalLinks =
-      typeof obj.totalLinks === "number"
-        ? obj.totalLinks
-        : typeof existingSummary?.totalLinks === "number"
-          ? existingSummary.totalLinks
-          : 0;
+
+    let totalBuyers: number;
+    if (typeof obj.totalBuyers === "number") {
+      totalBuyers = obj.totalBuyers;
+    } else if (typeof existingSummary?.totalBuyers === "number") {
+      totalBuyers = existingSummary.totalBuyers;
+    } else {
+      console.warn('normalizeAnalysisResult: totalBuyers missing, defaulting to 0');
+      totalBuyers = 0;
+    }
+
+    let totalSuppliers: number;
+    if (typeof obj.totalSuppliers === "number") {
+      totalSuppliers = obj.totalSuppliers;
+    } else if (typeof existingSummary?.totalSuppliers === "number") {
+      totalSuppliers = existingSummary.totalSuppliers;
+    } else {
+      console.warn('normalizeAnalysisResult: totalSuppliers missing, defaulting to 0');
+      totalSuppliers = 0;
+    }
+
+    let totalLinks: number;
+    if (typeof obj.totalLinks === "number") {
+      totalLinks = obj.totalLinks;
+    } else if (typeof existingSummary?.totalLinks === "number") {
+      totalLinks = existingSummary.totalLinks;
+    } else {
+      console.warn('normalizeAnalysisResult: totalLinks missing, defaulting to 0');
+      totalLinks = 0;
+    }
 
     summary = {
       totalBuyers,
@@ -229,6 +240,13 @@ export function normalizeAnalysisResult(
   } else if (typeof obj.createdAt === "string") {
     generatedAt = obj.createdAt;
   } else {
+    generatedAt = new Date().toISOString();
+  }
+
+  // Validate timestamp is a valid date
+  const parsedDate = new Date(generatedAt);
+  if (isNaN(parsedDate.getTime())) {
+    console.warn(`normalizeAnalysisResult: Invalid timestamp "${generatedAt}", using current time`);
     generatedAt = new Date().toISOString();
   }
 
@@ -466,7 +484,7 @@ export async function postToSlack(
         );
       }
     }
-    throw error;
+    throw new Error(`Slack notification failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

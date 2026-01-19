@@ -9,10 +9,12 @@ export interface AnalyzeNetworkOptions {
 /**
  * Analyze the network connections between buyers and suppliers.
  *
- * @param client - The NetworkAPIClient instance to use for API calls
- * @param options - Configuration options for the analysis
- * @returns Network analysis result with statistics, isolated nodes, hubs, and optionally suggestions
- * @throws Error - Not yet implemented
+ * **NOTE: This function is a stub and is not yet implemented.**
+ * It will throw an error when called.
+ *
+ * @param _client - The NetworkAPIClient instance (unused - stub)
+ * @param _options - Configuration options (unused - stub)
+ * @throws Error Always throws "Network analysis not yet implemented"
  */
 export async function analyzeNetwork(
   _client: NetworkAPIClient,

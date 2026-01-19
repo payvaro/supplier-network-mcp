@@ -616,6 +616,8 @@ export class NetworkAPIClient {
         const status = axiosError.response.status;
         const data = axiosError.response.data as { error?: string; errors?: Array<{ field?: string; message?: string }> };
 
+        console.error(`[NetworkAPIClient] HTTP error ${status}:`, JSON.stringify(data));
+
         if (status === 401) {
           return new Error("Authentication failed. Please check your API key.");
         } else if (status === 403) {
@@ -636,6 +638,7 @@ export class NetworkAPIClient {
           return new Error(`API error (${status}): ${data.error || axiosError.message}`);
         }
       } else if (axiosError.request) {
+        console.error(`[NetworkAPIClient] No response from API at ${this.baseURL}`);
         return new Error(`No response from API at ${this.baseURL}. Please check the connection.`);
       }
 

@@ -35,7 +35,7 @@ src/
 │   ├── api-client.ts          # NetworkAPIClient singleton (Axios wrapper)
 │   ├── matching.ts            # Fuzzy matching logic with weighted scoring
 │   ├── formatter.ts           # Output formatting (markdown/JSON)
-│   ├── network-analyzer.ts    # Network analysis and suggestions
+│   ├── network-analyzer.ts    # Network analysis (stub - not yet implemented)
 │   └── slack-notifier.ts      # Slack webhook integration
 └── tools/
     ├── suppliers.ts           # Supplier tool implementations

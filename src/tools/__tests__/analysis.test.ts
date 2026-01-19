@@ -131,6 +131,31 @@ describe('analysis tools', () => {
       expect(result.content[0].text).toContain('not yet implemented');
     });
 
+    it('handles zero totals without NaN in markdown output', async () => {
+      const analysisResult = createNetworkAnalysisResult({
+        summary: {
+          totalBuyers: 0,
+          totalSuppliers: 0,
+          totalLinks: 0,
+          averageSuppliersPerBuyer: 0,
+          averageBuyersPerSupplier: 0,
+          buyersWithLinks: 0,
+          suppliersWithLinks: 0,
+          connectionDistribution: { buyers: {}, suppliers: {} },
+        },
+      });
+      vi.mocked(analyzeNetwork).mockResolvedValue(analysisResult);
+
+      const result = await analyzeNetworkConnections({
+        includeSuggestions: true,
+        minConnectionsForHub: 5,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).not.toContain('NaN');
+      expect(result.content[0].text).toContain('0.0%');
+    });
+
     it('returns JSON format when specified', async () => {
       const analysisResult = createNetworkAnalysisResult();
       vi.mocked(analyzeNetwork).mockResolvedValue(analysisResult);
