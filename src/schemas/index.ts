@@ -51,9 +51,15 @@ export const SupplierSearchSchema = z.object({
 
 // List suppliers schema
 export const ListSuppliersSchema = z.object({
-  includeLinks: z.boolean()
-    .default(false)
-    .describe("Include buyer and aggregator relationship links in results"),
+  pageSize: z.number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe("Number of suppliers to return per page (1-100)"),
+  cursor: z.string()
+    .optional()
+    .describe("Pagination cursor for fetching the next page of results"),
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -183,6 +189,39 @@ export const UploadFileSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Network analysis schema
+export const NetworkAnalysisSchema = z.object({
+  includeSuggestions: z.boolean()
+    .default(true)
+    .describe("Whether to include connection suggestions in the analysis"),
+  minConnectionsForHub: z.number()
+    .int()
+    .min(1)
+    .default(5)
+    .describe("Minimum number of connections required to be considered a network hub"),
+  response_format: ResponseFormatSchema
+}).strict();
+
+// Slack notification schema
+export const SlackNotificationSchema = z.object({
+  webhookUrl: z.string()
+    .url("Must be a valid URL")
+    .optional()
+    .describe("Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)"),
+  analysisResult: z.union([
+    z.record(z.unknown()),
+    z.string().describe("JSON string representation of the analysis result"),
+    z.object({
+      structuredContent: z.record(z.unknown()).describe("Wrapped result from tool response")
+    })
+  ])
+    .describe("Network analysis result in any format: object, JSON string, or wrapped in structuredContent. Can be from network_analyze_connections tool or any compatible format."),
+  includeDetails: z.boolean()
+    .default(false)
+    .describe("Whether to include detailed breakdowns in the Slack message"),
+  response_format: ResponseFormatSchema
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -197,3 +236,5 @@ export type GetBuyersForSupplierInput = z.infer<typeof GetBuyersForSupplierSchem
 export type CreateBuyerLinkInput = z.infer<typeof CreateBuyerLinkSchema>;
 export type CreateBuyerInput = z.infer<typeof CreateBuyerSchema>;
 export type UploadFileInput = z.infer<typeof UploadFileSchema>;
+export type NetworkAnalysisInput = z.infer<typeof NetworkAnalysisSchema>;
+export type SlackNotificationInput = z.infer<typeof SlackNotificationSchema>;

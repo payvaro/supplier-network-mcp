@@ -69,6 +69,7 @@ export async function listBuyers(params: ListBuyersInput) {
     };
 
   } catch (error) {
+    console.error('listBuyers error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -142,6 +143,7 @@ export async function getBuyer(params: GetBuyerInput) {
     };
 
   } catch (error) {
+    console.error('getBuyer error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -188,6 +190,7 @@ export async function getBuyerByClientId(params: GetBuyerByClientIdInput) {
     };
 
   } catch (error) {
+    console.error('getBuyerByClientId error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -238,6 +241,7 @@ export async function getSuppliersForBuyer(params: GetSuppliersForBuyerInput) {
     };
 
   } catch (error) {
+    console.error('getSuppliersForBuyer error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -297,6 +301,7 @@ export async function getBuyersForSupplier(params: GetBuyersForSupplierInput) {
     };
 
   } catch (error) {
+    console.error('getBuyersForSupplier error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -356,6 +361,7 @@ export async function createBuyerLink(params: CreateBuyerLinkInput) {
     };
 
   } catch (error) {
+    console.error('createBuyerLink error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,
@@ -446,6 +452,7 @@ export async function createBuyer(params: CreateBuyerInput) {
     };
 
   } catch (error) {
+    console.error('createBuyer error:', error);
     const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
     return {
       isError: true,

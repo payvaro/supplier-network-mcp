@@ -22,6 +22,7 @@ import {
   CreateBuyerLinkSchema,
   CreateBuyerSchema,
   UploadFileSchema,
+  SlackNotificationSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -44,6 +45,10 @@ import {
   createBuyer,
 } from "./tools/buyers.js";
 
+import {
+  notifySlack,
+} from "./tools/analysis.js";
+
 /**
  * Create and configure the MCP server
  */
@@ -63,8 +68,12 @@ function createServer() {
   /**
    * List available tools
    */
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
+  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    // Log raw request
+    console.error("=== MCP Request (ListTools) ===");
+    console.error(JSON.stringify(request, null, 2));
+    
+    const response = {
       tools: [
         {
           name: "network_search_suppliers",
@@ -137,14 +146,20 @@ function createServer() {
         },
         {
           name: "network_list_suppliers",
-          description: "List all suppliers in the network.",
+          description: "List suppliers for the authenticated client with pagination support.",
           inputSchema: {
             type: "object",
             properties: {
-              includeLinks: {
-                type: "boolean",
-                description: "Include buyer and aggregator relationship links",
-                default: false,
+              pageSize: {
+                type: "number",
+                description: "Number of suppliers to return per page (1-100)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for fetching the next page of results",
               },
               response_format: {
                 type: "string",
@@ -448,90 +463,168 @@ function createServer() {
             required: ["filePath"],
           },
         },
+        {
+          name: "network_notify_slack",
+          description:
+            "Post network analysis results to Slack via webhook for team decision-making. Takes the structured result from network_analyze_connections and formats it as a Slack message.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              webhookUrl: {
+                type: "string",
+                description:
+                  "Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)",
+              },
+              analysisResult: {
+                oneOf: [
+                  {
+                    type: "object",
+                    description: "Network analysis result object",
+                  },
+                  {
+                    type: "string",
+                    description: "JSON string representation of the analysis result",
+                  },
+                ],
+                description:
+                  "Network analysis result in any format: object, JSON string, or wrapped in structuredContent. Can be from network_analyze_connections tool or any compatible format with summary/metrics data.",
+              },
+              includeDetails: {
+                type: "boolean",
+                description:
+                  "Whether to include detailed breakdowns in the Slack message",
+                default: false,
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["analysisResult"],
+          },
+        },
       ],
     };
+    
+    // Log raw response
+    console.error("=== MCP Response (ListTools) ===");
+    console.error(JSON.stringify(response, null, 2));
+    
+    return response;
   });
 
   /**
    * Handle tool execution
    */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    // Log raw request
+    console.error("=== MCP Request (CallTool) ===");
+    console.error(JSON.stringify(request, null, 2));
+    
     try {
       const { name, arguments: args } = request.params;
 
+      let response;
       switch (name) {
         case "network_search_suppliers": {
           const params = SupplierSearchSchema.parse(args);
-          return await searchSuppliers(params);
+          response = await searchSuppliers(params);
+          break;
         }
 
         case "network_list_suppliers": {
           const params = ListSuppliersSchema.parse(args);
-          return await listSuppliers(params);
+          response = await listSuppliers(params);
+          break;
         }
 
         case "network_get_supplier": {
           const params = GetSupplierSchema.parse(args);
-          return await getSupplier(params);
+          response = await getSupplier(params);
+          break;
         }
 
         case "network_get_suppliers_by_date": {
           const params = GetSuppliersByDateSchema.parse(args);
-          return await getSuppliersByDate(params);
+          response = await getSuppliersByDate(params);
+          break;
         }
 
         case "network_get_supplier_history": {
           const params = GetSupplierHistorySchema.parse(args);
-          return await getSupplierHistory(params);
+          response = await getSupplierHistory(params);
+          break;
         }
 
         case "network_list_buyers": {
           const params = ListBuyersSchema.parse(args);
-          return await listBuyers(params);
+          response = await listBuyers(params);
+          break;
         }
 
         case "network_get_buyer": {
           const params = GetBuyerSchema.parse(args);
-          return await getBuyer(params);
+          response = await getBuyer(params);
+          break;
         }
 
         case "network_get_buyer_by_client_id": {
           const params = GetBuyerByClientIdSchema.parse(args);
-          return await getBuyerByClientId(params);
+          response = await getBuyerByClientId(params);
+          break;
         }
 
         case "network_get_suppliers_for_buyer": {
           const params = GetSuppliersForBuyerSchema.parse(args);
-          return await getSuppliersForBuyer(params);
+          response = await getSuppliersForBuyer(params);
+          break;
         }
 
         case "network_get_buyers_for_supplier": {
           const params = GetBuyersForSupplierSchema.parse(args);
-          return await getBuyersForSupplier(params);
+          response = await getBuyersForSupplier(params);
+          break;
         }
 
         case "network_create_buyer_link": {
           const params = CreateBuyerLinkSchema.parse(args);
-          return await createBuyerLink(params);
+          response = await createBuyerLink(params);
+          break;
         }
 
         case "network_create_buyer": {
           const params = CreateBuyerSchema.parse(args);
-          return await createBuyer(params);
+          response = await createBuyer(params);
+          break;
         }
 
         case "network_upload_file": {
           const params = UploadFileSchema.parse(args);
-          return await uploadFile(params);
+          response = await uploadFile(params);
+          break;
+        }
+
+        case "network_notify_slack": {
+          const params = SlackNotificationSchema.parse(args);
+          response = await notifySlack(params);
+          break;
         }
 
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
+      
+      // Log raw response
+      console.error("=== MCP Response (CallTool) ===");
+      console.error(JSON.stringify(response, null, 2));
+      
+      return response;
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      return {
+      const errorResponse = {
         content: [
           {
             type: "text",
@@ -540,6 +633,12 @@ function createServer() {
         ],
         isError: true,
       };
+      
+      // Log error response
+      console.error("=== MCP Error Response (CallTool) ===");
+      console.error(JSON.stringify(errorResponse, null, 2));
+      
+      return errorResponse;
     }
   });
 
