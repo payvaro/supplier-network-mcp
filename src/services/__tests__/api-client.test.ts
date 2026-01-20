@@ -165,14 +165,51 @@ describe('api-client', () => {
     });
 
     describe('getAllSuppliers', () => {
-      it('fetches all suppliers from /api/suppliers', async () => {
+      it('fetches all suppliers by paginating through listSuppliers', async () => {
         const suppliers = [createSupplier(), createSupplier({ id: 'supplier-2' })];
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: suppliers });
+        mockAxiosInstance.get.mockResolvedValueOnce({
+          data: {
+            items: suppliers,
+            pagination: { count: 2, pageSize: 100, hasMore: false, nextCursor: null }
+          }
+        });
 
         const result = await client.getAllSuppliers();
 
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/suppliers');
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/my/suppliers', {
+          params: { pageSize: 100 }
+        });
         expect(result).toEqual(suppliers);
+      });
+
+      it('handles multiple pages of results', async () => {
+        const page1Suppliers = [createSupplier({ id: 'supplier-1' })];
+        const page2Suppliers = [createSupplier({ id: 'supplier-2' })];
+
+        mockAxiosInstance.get
+          .mockResolvedValueOnce({
+            data: {
+              items: page1Suppliers,
+              pagination: { count: 1, pageSize: 100, hasMore: true, nextCursor: 'cursor-1' }
+            }
+          })
+          .mockResolvedValueOnce({
+            data: {
+              items: page2Suppliers,
+              pagination: { count: 1, pageSize: 100, hasMore: false, nextCursor: null }
+            }
+          });
+
+        const result = await client.getAllSuppliers();
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledTimes(2);
+        expect(mockAxiosInstance.get).toHaveBeenNthCalledWith(1, '/api/my/suppliers', {
+          params: { pageSize: 100 }
+        });
+        expect(mockAxiosInstance.get).toHaveBeenNthCalledWith(2, '/api/my/suppliers', {
+          params: { pageSize: 100, cursor: 'cursor-1' }
+        });
+        expect(result).toEqual([...page1Suppliers, ...page2Suppliers]);
       });
     });
 
@@ -299,25 +336,53 @@ describe('api-client', () => {
     });
 
     describe('listBuyers', () => {
-      it('fetches all buyers', async () => {
+      it('fetches all buyers without links by default', async () => {
         const buyers = [createBuyer(), createBuyer({ id: 'buyer-2' })];
         mockAxiosInstance.get.mockResolvedValueOnce({ data: buyers });
 
         const result = await client.listBuyers();
 
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers');
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers', {
+          params: { includeLinks: false }
+        });
+        expect(result).toEqual(buyers);
+      });
+
+      it('fetches all buyers with links when requested', async () => {
+        const buyers = [createBuyer({ buyerLinks: [createBuyerLink()] })];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: buyers });
+
+        const result = await client.listBuyers(true);
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers', {
+          params: { includeLinks: true }
+        });
         expect(result).toEqual(buyers);
       });
     });
 
     describe('getBuyer', () => {
-      it('fetches buyer by ID', async () => {
+      it('fetches buyer by ID without links by default', async () => {
         const buyer = createBuyer({ id: 'buyer-123' });
         mockAxiosInstance.get.mockResolvedValueOnce({ data: buyer });
 
         const result = await client.getBuyer('buyer-123');
 
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers/buyer-123');
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers/buyer-123', {
+          params: { includeLinks: false }
+        });
+        expect(result).toEqual(buyer);
+      });
+
+      it('fetches buyer by ID with links when requested', async () => {
+        const buyer = createBuyer({ id: 'buyer-123', buyerLinks: [createBuyerLink()] });
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: buyer });
+
+        const result = await client.getBuyer('buyer-123', true);
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/buyers/buyer-123', {
+          params: { includeLinks: true }
+        });
         expect(result).toEqual(buyer);
       });
     });
