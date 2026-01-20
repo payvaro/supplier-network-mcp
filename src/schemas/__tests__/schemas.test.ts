@@ -351,7 +351,8 @@ describe('schemas', () => {
   describe('ListSuppliersSchema', () => {
     it('accepts empty object with defaults', () => {
       const result = ListSuppliersSchema.parse({});
-      expect(result.includeLinks).toBe(false);
+      expect(result.pageSize).toBe(20);
+      expect(result.cursor).toBeUndefined();
       expect(result.response_format).toBe(ResponseFormat.MARKDOWN);
     });
   });
