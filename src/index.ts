@@ -4,6 +4,8 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
 
@@ -23,6 +25,8 @@ import {
   CreateBuyerSchema,
   UploadFileSchema,
   SlackNotificationSchema,
+  ImportAnalysisSchema,
+  RelationshipAnalysisSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -49,6 +53,14 @@ import {
   notifySlack,
 } from "./tools/analysis.js";
 
+import {
+  analyzeImport,
+  analyzeRelationships,
+} from "./tools/workflows.js";
+
+// Import prompts
+import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
+
 /**
  * Create and configure the MCP server
  */
@@ -61,6 +73,7 @@ function createServer() {
     {
       capabilities: {
         tools: {},
+        prompts: {},
       },
     }
   );
@@ -505,6 +518,83 @@ function createServer() {
             required: ["analysisResult"],
           },
         },
+        {
+          name: "network_analyze_import",
+          description:
+            "Comprehensive import analysis: post-upload validation, pre-import preview, or data quality assessment. Identifies duplicates, calculates quality metrics, and provides recommendations.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              mode: {
+                type: "string",
+                enum: ["post-upload", "preview", "quality"],
+                description:
+                  "Analysis mode: 'post-upload' (what was imported), 'preview' (what would happen), 'quality' (data quality scoring)",
+              },
+              dateRange: {
+                type: "object",
+                description: "Date range in yyyyMMdd format",
+                properties: {
+                  from: {
+                    type: "string",
+                    description: "Start date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                  to: {
+                    type: "string",
+                    description: "End date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                },
+                required: ["from", "to"],
+              },
+              buyerId: {
+                type: "string",
+                description: "Scope analysis to a specific buyer",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["mode"],
+          },
+        },
+        {
+          name: "network_analyze_relationships",
+          description:
+            "Analyze buyer-supplier relationships: health assessment (link status, issues), coverage analysis (gaps, unlinked suppliers), or relationship mapping (network structure).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              buyerId: {
+                type: "string",
+                description:
+                  "Buyer ID to analyze (optional - analyzes all if not provided)",
+              },
+              analysisType: {
+                type: "string",
+                enum: ["health", "coverage", "mapping"],
+                description:
+                  "Type of analysis: 'health' (link status), 'coverage' (supplier gaps), 'mapping' (network structure)",
+              },
+              includeInactive: {
+                type: "boolean",
+                description: "Whether to include inactive links in the analysis",
+                default: false,
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["analysisType"],
+          },
+        },
       ],
     };
     
@@ -612,6 +702,18 @@ function createServer() {
           break;
         }
 
+        case "network_analyze_import": {
+          const params = ImportAnalysisSchema.parse(args);
+          response = await analyzeImport(params);
+          break;
+        }
+
+        case "network_analyze_relationships": {
+          const params = RelationshipAnalysisSchema.parse(args);
+          response = await analyzeRelationships(params);
+          break;
+        }
+
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -639,6 +741,47 @@ function createServer() {
       console.error(JSON.stringify(errorResponse, null, 2));
       
       return errorResponse;
+    }
+  });
+
+  /**
+   * List available prompts
+   */
+  server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
+    console.error("=== MCP Request (ListPrompts) ===");
+    console.error(JSON.stringify(request, null, 2));
+
+    const response = {
+      prompts: NETWORK_PROMPTS,
+    };
+
+    console.error("=== MCP Response (ListPrompts) ===");
+    console.error(JSON.stringify(response, null, 2));
+
+    return response;
+  });
+
+  /**
+   * Get a specific prompt
+   */
+  server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+    console.error("=== MCP Request (GetPrompt) ===");
+    console.error(JSON.stringify(request, null, 2));
+
+    try {
+      const { name, arguments: args } = request.params;
+      const response = await handleGetPrompt(name, args || {});
+
+      console.error("=== MCP Response (GetPrompt) ===");
+      console.error(JSON.stringify(response, null, 2));
+
+      return response;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.error("=== MCP Error Response (GetPrompt) ===");
+      console.error(errorMessage);
+      throw error;
     }
   });
 

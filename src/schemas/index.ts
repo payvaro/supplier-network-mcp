@@ -222,6 +222,33 @@ export const SlackNotificationSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Import analysis schema
+export const ImportAnalysisSchema = z.object({
+  mode: z.enum(["post-upload", "preview", "quality"])
+    .describe("Analysis mode: 'post-upload' (what was imported), 'preview' (what would happen), 'quality' (data quality scoring)"),
+  dateRange: z.object({
+    from: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+    to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format")
+  }).optional().describe("Date range in yyyyMMdd format (e.g., { from: '20251115', to: '20251119' })"),
+  buyerId: z.string()
+    .optional()
+    .describe("Scope analysis to a specific buyer"),
+  response_format: ResponseFormatSchema
+}).strict();
+
+// Relationship analysis schema
+export const RelationshipAnalysisSchema = z.object({
+  buyerId: z.string()
+    .optional()
+    .describe("Buyer ID to analyze (optional - analyzes all if not provided)"),
+  analysisType: z.enum(["health", "coverage", "mapping"])
+    .describe("Type of analysis: 'health' (link status), 'coverage' (supplier gaps), 'mapping' (network structure)"),
+  includeInactive: z.boolean()
+    .default(false)
+    .describe("Whether to include inactive links in the analysis"),
+  response_format: ResponseFormatSchema
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -238,3 +265,5 @@ export type CreateBuyerInput = z.infer<typeof CreateBuyerSchema>;
 export type UploadFileInput = z.infer<typeof UploadFileSchema>;
 export type NetworkAnalysisInput = z.infer<typeof NetworkAnalysisSchema>;
 export type SlackNotificationInput = z.infer<typeof SlackNotificationSchema>;
+export type ImportAnalysisInput = z.infer<typeof ImportAnalysisSchema>;
+export type RelationshipAnalysisInput = z.infer<typeof RelationshipAnalysisSchema>;

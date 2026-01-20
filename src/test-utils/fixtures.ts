@@ -12,6 +12,18 @@ import type {
   NetworkMetrics,
   IsolatedNode,
   NetworkHub,
+  ImportAnalysisResult,
+  ImportAnalysisSummary,
+  ImportDuplicate,
+  QualityMetrics,
+  QualityIssue,
+  RelationshipAnalysisResult,
+  RelationshipHealth,
+  RelationshipCoverage,
+  RelationshipMapping,
+  HealthIssue,
+  NetworkNode,
+  NetworkEdge,
 } from '../types.js';
 
 // Address fixtures
@@ -214,5 +226,139 @@ export function createBuyerListResponse(count = 3): { buyers: Buyer[]; count: nu
       })
     ),
     count,
+  };
+}
+
+// Import analysis fixtures
+export function createImportAnalysisSummary(
+  overrides: Partial<ImportAnalysisSummary> = {}
+): ImportAnalysisSummary {
+  return {
+    totalRecords: 100,
+    newSuppliers: 80,
+    potentialDuplicates: 15,
+    exactMatches: 5,
+    ...overrides,
+  };
+}
+
+export function createQualityIssue(overrides: Partial<QualityIssue> = {}): QualityIssue {
+  return {
+    field: 'email',
+    issue: 'Missing email address',
+    severity: 'medium',
+    affectedCount: 10,
+    ...overrides,
+  };
+}
+
+export function createQualityMetrics(overrides: Partial<QualityMetrics> = {}): QualityMetrics {
+  return {
+    completeness: 0.85,
+    matchConfidence: 0.9,
+    issues: [createQualityIssue()],
+    ...overrides,
+  };
+}
+
+export function createImportDuplicate(overrides: Partial<ImportDuplicate> = {}): ImportDuplicate {
+  return {
+    incoming: createSupplier({ id: 'incoming-1', name: 'Incoming Supplier' }),
+    existingMatches: [createSupplierMatch()],
+    ...overrides,
+  };
+}
+
+export function createImportAnalysisResult(
+  overrides: Partial<ImportAnalysisResult> = {}
+): ImportAnalysisResult {
+  return {
+    mode: 'post-upload',
+    summary: createImportAnalysisSummary(),
+    duplicates: [createImportDuplicate()],
+    qualityMetrics: createQualityMetrics(),
+    recommendations: ['Review 5 exact matches', 'Investigate 15 potential duplicates'],
+    generatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+// Relationship analysis fixtures
+export function createHealthIssue(overrides: Partial<HealthIssue> = {}): HealthIssue {
+  return {
+    type: 'stale_link',
+    description: '3 inactive link(s) found',
+    affectedIds: ['supplier-1', 'supplier-2', 'supplier-3'],
+    ...overrides,
+  };
+}
+
+export function createRelationshipHealth(
+  overrides: Partial<RelationshipHealth> = {}
+): RelationshipHealth {
+  return {
+    activeLinks: 45,
+    staleLinks: 5,
+    healthScore: 85,
+    issues: [createHealthIssue()],
+    ...overrides,
+  };
+}
+
+export function createRelationshipCoverage(
+  overrides: Partial<RelationshipCoverage> = {}
+): RelationshipCoverage {
+  return {
+    totalSuppliers: 100,
+    linkedSuppliers: 75,
+    coveragePercent: 75,
+    missingHighPriority: [
+      createSupplier({ id: 'missing-1', name: 'Missing Supplier 1' }),
+    ],
+    ...overrides,
+  };
+}
+
+export function createNetworkNode(overrides: Partial<NetworkNode> = {}): NetworkNode {
+  return {
+    id: 'node-1',
+    type: 'supplier',
+    name: 'Test Node',
+    linkCount: 5,
+    ...overrides,
+  };
+}
+
+export function createNetworkEdge(overrides: Partial<NetworkEdge> = {}): NetworkEdge {
+  return {
+    from: 'buyer-1',
+    to: 'supplier-1',
+    status: 'ACTIVE',
+    ...overrides,
+  };
+}
+
+export function createRelationshipMapping(
+  overrides: Partial<RelationshipMapping> = {}
+): RelationshipMapping {
+  return {
+    nodes: [
+      createNetworkNode({ id: 'buyer-1', type: 'buyer', name: 'Test Buyer' }),
+      createNetworkNode({ id: 'supplier-1', type: 'supplier', name: 'Test Supplier' }),
+    ],
+    edges: [createNetworkEdge()],
+    ...overrides,
+  };
+}
+
+export function createRelationshipAnalysisResult(
+  overrides: Partial<RelationshipAnalysisResult> = {}
+): RelationshipAnalysisResult {
+  return {
+    analysisType: 'health',
+    health: createRelationshipHealth(),
+    recommendations: ['Health score is good (85%)', 'Review 3 stale links'],
+    generatedAt: new Date().toISOString(),
+    ...overrides,
   };
 }

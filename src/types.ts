@@ -218,3 +218,87 @@ export interface NetworkAnalysisResult {
   metrics: NetworkMetrics;
   generatedAt: string;
 }
+
+// Import analysis types
+export interface QualityIssue {
+  field: string;
+  issue: string;
+  severity: "high" | "medium" | "low";
+  affectedCount: number;
+}
+
+export interface ImportAnalysisSummary {
+  totalRecords: number;
+  newSuppliers: number;
+  potentialDuplicates: number;
+  exactMatches: number;
+}
+
+export interface ImportDuplicate {
+  incoming: Supplier;
+  existingMatches: SupplierMatch[];
+}
+
+export interface QualityMetrics {
+  completeness: number;
+  matchConfidence: number;
+  issues: QualityIssue[];
+}
+
+export interface ImportAnalysisResult {
+  mode: "post-upload" | "preview" | "quality";
+  summary: ImportAnalysisSummary;
+  duplicates: ImportDuplicate[];
+  qualityMetrics?: QualityMetrics;
+  recommendations: string[];
+  generatedAt: string;
+}
+
+// Relationship analysis types
+export interface HealthIssue {
+  type: "stale_link" | "missing_contact" | "inactive_supplier";
+  description: string;
+  affectedIds: string[];
+}
+
+export interface RelationshipHealth {
+  activeLinks: number;
+  staleLinks: number;
+  healthScore: number;
+  issues: HealthIssue[];
+}
+
+export interface RelationshipCoverage {
+  totalSuppliers: number;
+  linkedSuppliers: number;
+  coveragePercent: number;
+  missingHighPriority: Supplier[];
+}
+
+export interface NetworkNode {
+  id: string;
+  type: "buyer" | "supplier";
+  name?: string;
+  linkCount: number;
+}
+
+export interface NetworkEdge {
+  from: string;
+  to: string;
+  status: "ACTIVE" | "INACTIVE" | "PENDING";
+}
+
+export interface RelationshipMapping {
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+}
+
+export interface RelationshipAnalysisResult {
+  analysisType: "health" | "coverage" | "mapping";
+  buyer?: Buyer;
+  health?: RelationshipHealth;
+  coverage?: RelationshipCoverage;
+  mapping?: RelationshipMapping;
+  recommendations: string[];
+  generatedAt: string;
+}

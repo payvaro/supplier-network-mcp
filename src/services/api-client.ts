@@ -207,12 +207,23 @@ export class NetworkAPIClient {
   }
 
   /**
-   * Get all suppliers (for search/analysis - uses different endpoint)
+   * Get all suppliers by paginating through listSuppliers endpoint
    */
   async getAllSuppliers(): Promise<Supplier[]> {
+    const allSuppliers: Supplier[] = [];
+    let cursor: string | undefined;
+    const pageSize = 100; // Use larger page size for efficiency
+
     try {
-      const response = await this.client.get<Supplier[]>("/api/suppliers");
-      return response.data;
+      do {
+        const response = await this.listSuppliers(pageSize, cursor);
+        allSuppliers.push(...response.items);
+        cursor = response.pagination.hasMore && response.pagination.nextCursor
+          ? response.pagination.nextCursor
+          : undefined;
+      } while (cursor);
+
+      return allSuppliers;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -331,10 +342,20 @@ export class NetworkAPIClient {
   /**
    * List all buyers
    */
-  async listBuyers(): Promise<Buyer[]> {
+  async listBuyers(includeLinks: boolean = false): Promise<Buyer[]> {
     try {
-      const response = await this.client.get<Buyer[]>("/api/buyers");
-      return response.data;
+      const response = await this.client.get<Buyer[] | PaginatedResponse<Buyer>>("/api/buyers", {
+        params: { includeLinks }
+      });
+      // Handle both array and paginated response formats
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+      if (response.data && 'items' in response.data) {
+        return response.data.items;
+      }
+      console.error('[api-client] Unexpected listBuyers response format:', typeof response.data);
+      return [];
     } catch (error) {
       throw this.handleError(error);
     }
@@ -343,9 +364,11 @@ export class NetworkAPIClient {
   /**
    * Get buyer by ID
    */
-  async getBuyer(id: string): Promise<Buyer> {
+  async getBuyer(id: string, includeLinks: boolean = false): Promise<Buyer> {
     try {
-      const response = await this.client.get<Buyer>(`/api/buyers/${id}`);
+      const response = await this.client.get<Buyer>(`/api/buyers/${id}`, {
+        params: { includeLinks }
+      });
       return response.data;
     } catch (error) {
       throw this.handleError(error);
