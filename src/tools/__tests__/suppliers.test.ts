@@ -32,7 +32,7 @@ describe('supplier tools', () => {
         createSupplier({ id: 's1', name: 'Acme Corporation' }),
         createSupplier({ id: 's2', name: 'Beta Corp' }),
       ];
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.getAllSuppliers.mockResolvedValue(suppliers);
 
       const result = await searchSuppliers({
         name: 'Acme',
@@ -46,7 +46,7 @@ describe('supplier tools', () => {
     });
 
     it('returns no matches message when nothing found', async () => {
-      mockClient.listSuppliers.mockResolvedValue([]);
+      mockClient.getAllSuppliers.mockResolvedValue([]);
 
       const result = await searchSuppliers({
         name: 'Nonexistent',
@@ -62,7 +62,7 @@ describe('supplier tools', () => {
       const suppliers = Array.from({ length: 20 }, (_, i) =>
         createSupplier({ id: `s${i}`, name: `Supplier ${i}` })
       );
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.getAllSuppliers.mockResolvedValue(suppliers);
 
       const result = await searchSuppliers({
         name: 'Supplier',
@@ -79,7 +79,7 @@ describe('supplier tools', () => {
         createSupplier({ id: 's1', name: 'Company A', email: 'info@company-a.com' }),
         createSupplier({ id: 's2', name: 'Company B', email: 'contact@company-b.com' }),
       ];
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.getAllSuppliers.mockResolvedValue(suppliers);
 
       const result = await searchSuppliers({
         email: 'info@company-a.com',
@@ -89,7 +89,7 @@ describe('supplier tools', () => {
       });
 
       expect(result.structuredContent).toBeDefined();
-      expect(mockClient.listSuppliers).toHaveBeenCalled();
+      expect(mockClient.getAllSuppliers).toHaveBeenCalled();
     });
 
     it('searches by address', async () => {
@@ -100,7 +100,7 @@ describe('supplier tools', () => {
           address: createAddress({ city: 'Chicago', stateProvince: 'IL' }),
         }),
       ];
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.getAllSuppliers.mockResolvedValue(suppliers);
 
       const result = await searchSuppliers({
         address: { city: 'Chicago' },
@@ -109,11 +109,11 @@ describe('supplier tools', () => {
         response_format: ResponseFormat.MARKDOWN,
       });
 
-      expect(mockClient.listSuppliers).toHaveBeenCalled();
+      expect(mockClient.getAllSuppliers).toHaveBeenCalled();
     });
 
     it('handles API errors gracefully', async () => {
-      mockClient.listSuppliers.mockRejectedValue(new Error('API connection failed'));
+      mockClient.getAllSuppliers.mockRejectedValue(new Error('API connection failed'));
 
       const result = await searchSuppliers({
         name: 'Test',
@@ -129,7 +129,7 @@ describe('supplier tools', () => {
 
     it('returns JSON format when specified', async () => {
       const suppliers = [createSupplier({ name: 'Test Corp' })];
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.getAllSuppliers.mockResolvedValue(suppliers);
 
       const result = await searchSuppliers({
         name: 'Test',
@@ -149,10 +149,13 @@ describe('supplier tools', () => {
         createSupplier({ name: 'Supplier A' }),
         createSupplier({ name: 'Supplier B' }),
       ];
-      mockClient.listSuppliers.mockResolvedValue(suppliers);
+      mockClient.listSuppliers.mockResolvedValue({
+        items: suppliers,
+        pagination: { count: 2, pageSize: 20, hasMore: false, nextCursor: null }
+      });
 
       const result = await listSuppliers({
-        includeLinks: false,
+        pageSize: 20,
         response_format: ResponseFormat.MARKDOWN,
       });
 
@@ -160,22 +163,29 @@ describe('supplier tools', () => {
       expect(result.structuredContent?.count).toBe(2);
     });
 
-    it('includes links when requested', async () => {
-      mockClient.listSuppliers.mockResolvedValue([]);
+    it('passes pagination parameters', async () => {
+      mockClient.listSuppliers.mockResolvedValue({
+        items: [],
+        pagination: { count: 0, pageSize: 50, hasMore: false, nextCursor: null }
+      });
 
       await listSuppliers({
-        includeLinks: true,
+        pageSize: 50,
+        cursor: 'cursor123',
         response_format: ResponseFormat.MARKDOWN,
       });
 
-      expect(mockClient.listSuppliers).toHaveBeenCalledWith(true);
+      expect(mockClient.listSuppliers).toHaveBeenCalledWith(50, 'cursor123');
     });
 
     it('returns empty list gracefully', async () => {
-      mockClient.listSuppliers.mockResolvedValue([]);
+      mockClient.listSuppliers.mockResolvedValue({
+        items: [],
+        pagination: { count: 0, pageSize: 20, hasMore: false, nextCursor: null }
+      });
 
       const result = await listSuppliers({
-        includeLinks: false,
+        pageSize: 20,
         response_format: ResponseFormat.MARKDOWN,
       });
 
@@ -187,7 +197,7 @@ describe('supplier tools', () => {
       mockClient.listSuppliers.mockRejectedValue(new Error('Network error'));
 
       const result = await listSuppliers({
-        includeLinks: false,
+        pageSize: 20,
         response_format: ResponseFormat.MARKDOWN,
       });
 

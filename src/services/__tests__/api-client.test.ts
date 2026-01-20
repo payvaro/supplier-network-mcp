@@ -134,26 +134,45 @@ describe('api-client', () => {
     });
 
     describe('listSuppliers', () => {
-      it('fetches all suppliers', async () => {
-        const suppliers = [createSupplier(), createSupplier({ id: 'supplier-2' })];
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: suppliers });
+      it('fetches suppliers with default pagination', async () => {
+        const paginatedResponse = {
+          items: [createSupplier(), createSupplier({ id: 'supplier-2' })],
+          pagination: { nextCursor: 'abc123', hasMore: true }
+        };
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: paginatedResponse });
 
         const result = await client.listSuppliers();
 
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/suppliers', {
-          params: { includeLinks: false },
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/my/suppliers', {
+          params: { pageSize: 20 },
         });
-        expect(result).toEqual(suppliers);
+        expect(result).toEqual(paginatedResponse);
       });
 
-      it('passes includeLinks parameter', async () => {
-        mockAxiosInstance.get.mockResolvedValueOnce({ data: [] });
+      it('passes pageSize and cursor parameters', async () => {
+        const paginatedResponse = {
+          items: [],
+          pagination: { nextCursor: null, hasMore: false }
+        };
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: paginatedResponse });
 
-        await client.listSuppliers(true);
+        await client.listSuppliers(50, 'cursor123');
 
-        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/suppliers', {
-          params: { includeLinks: true },
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/my/suppliers', {
+          params: { pageSize: 50, cursor: 'cursor123' },
         });
+      });
+    });
+
+    describe('getAllSuppliers', () => {
+      it('fetches all suppliers from /api/suppliers', async () => {
+        const suppliers = [createSupplier(), createSupplier({ id: 'supplier-2' })];
+        mockAxiosInstance.get.mockResolvedValueOnce({ data: suppliers });
+
+        const result = await client.getAllSuppliers();
+
+        expect(mockAxiosInstance.get).toHaveBeenCalledWith('/api/suppliers');
+        expect(result).toEqual(suppliers);
       });
     });
 

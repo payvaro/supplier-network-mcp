@@ -1,8 +1,9 @@
 import { vi, type Mock } from 'vitest';
-import type { Supplier, Buyer, BuyerLink, AggregatorLink } from '../types.js';
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, PaginatedResponse } from '../types.js';
 
 export interface MockNetworkAPIClient {
-  listSuppliers: Mock<() => Promise<Supplier[]>>;
+  listSuppliers: Mock<(pageSize?: number, cursor?: string) => Promise<PaginatedResponse<Supplier>>>;
+  getAllSuppliers: Mock<() => Promise<Supplier[]>>;
   getSupplier: Mock<(id: string, includeLinks?: boolean) => Promise<Supplier>>;
   createSupplier: Mock<(supplier: Partial<Supplier>) => Promise<Supplier>>;
   updateSupplier: Mock<(id: string, supplier: Partial<Supplier>) => Promise<Supplier>>;
@@ -29,6 +30,7 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
   return {
     // Supplier methods
     listSuppliers: vi.fn(),
+    getAllSuppliers: vi.fn(),
     getSupplier: vi.fn(),
     createSupplier: vi.fn(),
     updateSupplier: vi.fn(),
