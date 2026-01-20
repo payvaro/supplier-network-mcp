@@ -65,7 +65,12 @@ Examples: `network_search_suppliers`, `network_create_buyer_link`, `network_anal
 
 ## Testing
 
-No automated tests yet. Manual testing:
+Automated tests are implemented with Vitest. Commands:
+- `npm test`              # Run the test suite once
+- `npm run test:watch`    # Run tests in watch mode during development
+- `npm run test:coverage` # Run tests and generate coverage report
+
+Manual testing:
 - Use `npm start` for stdio mode testing with Claude Desktop
 - Use `npm run start:http` for HTTP mode testing on port 3000
 - Check logs at `~/Library/Logs/Claude/mcp*.log` for debugging
