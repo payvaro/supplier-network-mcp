@@ -8,30 +8,94 @@ export interface AnalyzeNetworkOptions {
 
 /**
  * Analyze the network connections between buyers and suppliers.
- *
- * **NOTE: This function is a stub and is not yet implemented.**
- * It will throw an error when called.
- *
- * @param _client - The NetworkAPIClient instance (unused - stub)
- * @param _options - Configuration options (unused - stub)
- * @throws Error Always throws "Network analysis not yet implemented"
  */
 export async function analyzeNetwork(
-  _client: NetworkAPIClient,
+  client: NetworkAPIClient,
   _options: AnalyzeNetworkOptions = {}
 ): Promise<NetworkAnalysisResult> {
-  // TODO: Implement network analysis
-  // This will need to:
-  // 1. Fetch all buyers and suppliers
-  // 2. Fetch all buyer-supplier links
-  // 3. Calculate statistics (totals, averages)
-  // 4. Identify isolated nodes (no connections)
-  // 5. Identify hubs (highly connected nodes)
-  // 6. Optionally generate connection suggestions
-  // 7. Calculate network metrics (density, coverage)
+  // Fetch all data
+  const [buyers, suppliers, links] = await Promise.all([
+    client.listBuyers(),
+    client.getAllSuppliers(),
+    client.listBuyerLinks(),
+  ]);
 
-  throw new Error(
-    'Network analysis not yet implemented. ' +
-    'This feature will analyze buyer-supplier connections and provide insights.'
-  );
+  // Build connection maps
+  const buyerToSuppliers = new Map<string, Set<string>>();
+  const supplierToBuyers = new Map<string, Set<string>>();
+
+  for (const link of links) {
+    if (!link.buyerId || !link.supplierId) continue;
+
+    if (!buyerToSuppliers.has(link.buyerId)) {
+      buyerToSuppliers.set(link.buyerId, new Set());
+    }
+    buyerToSuppliers.get(link.buyerId)!.add(link.supplierId);
+
+    if (!supplierToBuyers.has(link.supplierId)) {
+      supplierToBuyers.set(link.supplierId, new Set());
+    }
+    supplierToBuyers.get(link.supplierId)!.add(link.buyerId);
+  }
+
+  // Calculate statistics
+  const totalBuyers = buyers.length;
+  const totalSuppliers = suppliers.length;
+  const totalLinks = links.length;
+  const buyersWithLinks = buyerToSuppliers.size;
+  const suppliersWithLinks = supplierToBuyers.size;
+
+  // Calculate averages
+  const averageSuppliersPerBuyer = totalBuyers > 0
+    ? Array.from(buyerToSuppliers.values()).reduce((sum, set) => sum + set.size, 0) / totalBuyers
+    : 0;
+
+  const averageBuyersPerSupplier = totalSuppliers > 0
+    ? Array.from(supplierToBuyers.values()).reduce((sum, set) => sum + set.size, 0) / totalSuppliers
+    : 0;
+
+  // Build connection distribution
+  const buyerDistribution: Record<number, number> = {};
+  const supplierDistribution: Record<number, number> = {};
+
+  for (const buyer of buyers) {
+    const count = buyer.id ? (buyerToSuppliers.get(buyer.id)?.size ?? 0) : 0;
+    buyerDistribution[count] = (buyerDistribution[count] ?? 0) + 1;
+  }
+
+  for (const supplier of suppliers) {
+    const count = supplier.id ? (supplierToBuyers.get(supplier.id)?.size ?? 0) : 0;
+    supplierDistribution[count] = (supplierDistribution[count] ?? 0) + 1;
+  }
+
+  return {
+    summary: {
+      totalBuyers,
+      totalSuppliers,
+      totalLinks,
+      averageSuppliersPerBuyer,
+      averageBuyersPerSupplier,
+      buyersWithLinks,
+      suppliersWithLinks,
+      connectionDistribution: {
+        buyers: buyerDistribution,
+        suppliers: supplierDistribution,
+      },
+    },
+    isolatedNodes: {
+      buyers: [],
+      suppliers: [],
+    },
+    hubs: {
+      topBuyers: [],
+      topSuppliers: [],
+    },
+    metrics: {
+      density: 0,
+      coverage: 0,
+      buyerCoverage: 0,
+      supplierCoverage: 0,
+    },
+    generatedAt: new Date().toISOString(),
+  };
 }
