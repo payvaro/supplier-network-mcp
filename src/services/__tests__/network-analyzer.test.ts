@@ -355,5 +355,81 @@ describe('network-analyzer', () => {
         expect(result.suggestions).toBeDefined();
       });
     });
+
+    describe('full analysis integration', () => {
+      const mockBuyers: Buyer[] = [
+        { id: 'b1', name: 'Alpha Corp', clientId: 'c1' },
+        { id: 'b2', name: 'Beta Inc', clientId: 'c2' },
+        { id: 'b3', name: 'Gamma LLC', clientId: 'c3' },
+        { id: 'b4', name: 'Delta Co', clientId: 'c4' },
+      ];
+
+      const mockSuppliers: Supplier[] = [
+        { id: 's1', name: 'Parts Plus' },
+        { id: 's2', name: 'Supply Co' },
+        { id: 's3', name: 'Materials Inc' },
+        { id: 's4', name: 'Equipment Ltd' },
+      ];
+
+      const mockLinks: BuyerLink[] = [
+        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
+      ];
+
+      beforeEach(() => {
+        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
+        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
+      });
+
+      it('returns complete NetworkAnalysisResult structure', async () => {
+        const result = await analyzeNetwork(mockClient as never, {
+          includeSuggestions: true,
+          minConnectionsForHub: 2,
+        });
+
+        // Verify structure
+        expect(result).toHaveProperty('summary');
+        expect(result).toHaveProperty('isolatedNodes');
+        expect(result).toHaveProperty('hubs');
+        expect(result).toHaveProperty('metrics');
+        expect(result).toHaveProperty('generatedAt');
+        expect(result).toHaveProperty('suggestions');
+
+        // Verify summary
+        expect(result.summary.totalBuyers).toBe(4);
+        expect(result.summary.totalSuppliers).toBe(4);
+        expect(result.summary.totalLinks).toBe(6);
+        expect(result.summary.buyersWithLinks).toBe(3);
+        expect(result.summary.suppliersWithLinks).toBe(3);
+
+        // Verify isolated nodes
+        expect(result.isolatedNodes.buyers).toHaveLength(1);
+        expect(result.isolatedNodes.buyers[0].id).toBe('b4');
+        expect(result.isolatedNodes.suppliers).toHaveLength(1);
+        expect(result.isolatedNodes.suppliers[0].id).toBe('s4');
+
+        // Verify hubs (minConnectionsForHub: 2)
+        expect(result.hubs.topBuyers.length).toBeGreaterThan(0);
+        expect(result.hubs.topSuppliers.length).toBeGreaterThan(0);
+
+        // Verify metrics are calculated
+        expect(result.metrics.density).toBeGreaterThan(0);
+        expect(result.metrics.coverage).toBeGreaterThan(0);
+
+        // Verify suggestions exist
+        expect(result.suggestions).toBeDefined();
+      });
+
+      it('handles API errors gracefully', async () => {
+        mockClient.listBuyers.mockRejectedValue(new Error('API error'));
+
+        await expect(analyzeNetwork(mockClient as never)).rejects.toThrow('API error');
+      });
+    });
   });
 });
