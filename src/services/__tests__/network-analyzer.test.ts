@@ -46,6 +46,15 @@ describe('network-analyzer', () => {
         expect(result.generatedAt).toBeDefined();
         expect(new Date(result.generatedAt).getTime()).toBeLessThanOrEqual(Date.now());
       });
+
+      it('returns zero metrics for empty network', async () => {
+        const result = await analyzeNetwork(mockClient as never);
+
+        expect(result.metrics.density).toBe(0);
+        expect(result.metrics.coverage).toBe(0);
+        expect(result.metrics.buyerCoverage).toBe(0);
+        expect(result.metrics.supplierCoverage).toBe(0);
+      });
     });
 
     describe('with populated network', () => {
@@ -99,6 +108,42 @@ describe('network-analyzer', () => {
 
         expect(result.summary.buyersWithLinks).toBe(2); // b1, b2
         expect(result.summary.suppliersWithLinks).toBe(2); // s1, s2
+      });
+
+      describe('network metrics', () => {
+        it('calculates network density', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // Density = actual links / possible links
+          // Possible links = buyers * suppliers = 3 * 2 = 6
+          // Actual links = 3
+          // Density = 3/6 = 0.5
+          expect(result.metrics.density).toBeCloseTo(0.5);
+        });
+
+        it('calculates overall coverage', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // Coverage = nodes with links / total nodes
+          // Buyers with links: 2, Suppliers with links: 2
+          // Total nodes: 5
+          // Coverage = 4/5 = 0.8
+          expect(result.metrics.coverage).toBeCloseTo(0.8);
+        });
+
+        it('calculates buyer coverage', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // Buyer coverage = buyers with links / total buyers = 2/3
+          expect(result.metrics.buyerCoverage).toBeCloseTo(2 / 3);
+        });
+
+        it('calculates supplier coverage', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // Supplier coverage = suppliers with links / total suppliers = 2/2 = 1
+          expect(result.metrics.supplierCoverage).toBe(1);
+        });
       });
     });
   });
