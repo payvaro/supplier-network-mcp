@@ -280,5 +280,80 @@ describe('network-analyzer', () => {
         expect(result.hubs.topSuppliers).toHaveLength(0);
       });
     });
+
+    describe('connection suggestions', () => {
+      // Scenario: b1 and b2 share suppliers s1 and s2
+      // b1 also uses s3, but b2 does not
+      // Suggestion: b2 should consider s3 (used by similar buyer b1)
+      const mockBuyers: Buyer[] = [
+        { id: 'b1', name: 'Buyer One' },
+        { id: 'b2', name: 'Buyer Two' },
+      ];
+
+      const mockSuppliers: Supplier[] = [
+        { id: 's1', name: 'Shared Supplier 1' },
+        { id: 's2', name: 'Shared Supplier 2' },
+        { id: 's3', name: 'Unique Supplier' },
+      ];
+
+      const mockLinks: BuyerLink[] = [
+        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+      ];
+
+      beforeEach(() => {
+        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
+        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
+      });
+
+      it('returns suggestions when includeSuggestions is true', async () => {
+        const result = await analyzeNetwork(mockClient as never, { includeSuggestions: true });
+
+        expect(result.suggestions).toBeDefined();
+        expect(result.suggestions!.length).toBeGreaterThan(0);
+      });
+
+      it('returns no suggestions when includeSuggestions is false', async () => {
+        const result = await analyzeNetwork(mockClient as never, { includeSuggestions: false });
+
+        expect(result.suggestions).toBeUndefined();
+      });
+
+      it('suggests connections based on shared supplier patterns', async () => {
+        const result = await analyzeNetwork(mockClient as never, { includeSuggestions: true });
+
+        // b2 should be suggested s3 because b1 (who shares s1, s2) uses s3
+        const suggestion = result.suggestions!.find(
+          s => s.buyerId === 'b2' && s.supplierId === 's3'
+        );
+        expect(suggestion).toBeDefined();
+        expect(suggestion!.buyerName).toBe('Buyer Two');
+        expect(suggestion!.supplierName).toBe('Unique Supplier');
+      });
+
+      it('includes confidence level in suggestions', async () => {
+        const result = await analyzeNetwork(mockClient as never, { includeSuggestions: true });
+
+        expect(result.suggestions!.every(s =>
+          s.confidence === 'high' || s.confidence === 'medium' || s.confidence === 'low'
+        )).toBe(true);
+      });
+
+      it('includes reason in suggestions', async () => {
+        const result = await analyzeNetwork(mockClient as never, { includeSuggestions: true });
+
+        expect(result.suggestions!.every(s => s.reason.length > 0)).toBe(true);
+      });
+
+      it('defaults includeSuggestions to true', async () => {
+        const result = await analyzeNetwork(mockClient as never);
+
+        expect(result.suggestions).toBeDefined();
+      });
+    });
   });
 });
