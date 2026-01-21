@@ -68,6 +68,16 @@ export async function analyzeNetwork(
     supplierDistribution[count] = (supplierDistribution[count] ?? 0) + 1;
   }
 
+  // Calculate metrics
+  const totalNodes = totalBuyers + totalSuppliers;
+  const nodesWithLinks = buyersWithLinks + suppliersWithLinks;
+  const possibleLinks = totalBuyers * totalSuppliers;
+
+  const density = possibleLinks > 0 ? totalLinks / possibleLinks : 0;
+  const coverage = totalNodes > 0 ? nodesWithLinks / totalNodes : 0;
+  const buyerCoverage = totalBuyers > 0 ? buyersWithLinks / totalBuyers : 0;
+  const supplierCoverage = totalSuppliers > 0 ? suppliersWithLinks / totalSuppliers : 0;
+
   return {
     summary: {
       totalBuyers,
@@ -91,10 +101,10 @@ export async function analyzeNetwork(
       topSuppliers: [],
     },
     metrics: {
-      density: 0,
-      coverage: 0,
-      buyerCoverage: 0,
-      supplierCoverage: 0,
+      density,
+      coverage,
+      buyerCoverage,
+      supplierCoverage,
     },
     generatedAt: new Date().toISOString(),
   };
