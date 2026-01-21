@@ -145,6 +145,62 @@ describe('network-analyzer', () => {
           expect(result.metrics.supplierCoverage).toBe(1);
         });
       });
+
+      describe('isolated nodes', () => {
+        it('identifies isolated buyers (no links)', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // b3 has no links
+          expect(result.isolatedNodes.buyers).toHaveLength(1);
+          expect(result.isolatedNodes.buyers[0].id).toBe('b3');
+          expect(result.isolatedNodes.buyers[0].name).toBe('Buyer 3');
+          expect(result.isolatedNodes.buyers[0].type).toBe('buyer');
+        });
+
+        it('returns empty isolated suppliers when all have links', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          // Both s1 and s2 have links
+          expect(result.isolatedNodes.suppliers).toHaveLength(0);
+        });
+
+        it('includes clientId for isolated buyers', async () => {
+          const result = await analyzeNetwork(mockClient as never);
+
+          expect(result.isolatedNodes.buyers[0].clientId).toBe('c3');
+        });
+      });
+    });
+
+    describe('with isolated suppliers', () => {
+      const mockBuyers: Buyer[] = [
+        { id: 'b1', name: 'Buyer 1' },
+      ];
+
+      const mockSuppliers: Supplier[] = [
+        { id: 's1', name: 'Supplier 1' },
+        { id: 's2', name: 'Supplier 2' },
+        { id: 's3', name: 'Supplier 3' },
+      ];
+
+      const mockLinks: BuyerLink[] = [
+        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+      ];
+
+      beforeEach(() => {
+        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
+        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
+      });
+
+      it('identifies isolated suppliers', async () => {
+        const result = await analyzeNetwork(mockClient as never);
+
+        expect(result.isolatedNodes.suppliers).toHaveLength(2);
+        const isolatedIds = result.isolatedNodes.suppliers.map(s => s.id);
+        expect(isolatedIds).toContain('s2');
+        expect(isolatedIds).toContain('s3');
+      });
     });
   });
 });
