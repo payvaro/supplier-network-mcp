@@ -11,7 +11,7 @@ export interface AnalyzeNetworkOptions {
  */
 export async function analyzeNetwork(
   client: NetworkAPIClient,
-  _options: AnalyzeNetworkOptions = {}
+  options: AnalyzeNetworkOptions = {}
 ): Promise<NetworkAnalysisResult> {
   // Fetch all data
   const [buyers, suppliers, links] = await Promise.all([
@@ -96,6 +96,30 @@ export async function analyzeNetwork(
       type: 'supplier' as const,
     }));
 
+  // Identify network hubs
+  const minConnections = options.minConnectionsForHub ?? 5;
+
+  const topBuyerHubs = buyers
+    .map(buyer => ({
+      id: buyer.id!,
+      name: buyer.name,
+      type: 'buyer' as const,
+      connectionCount: buyer.id ? (buyerToSuppliers.get(buyer.id)?.size ?? 0) : 0,
+      clientId: buyer.clientId,
+    }))
+    .filter(hub => hub.id && hub.connectionCount >= minConnections)
+    .sort((a, b) => b.connectionCount - a.connectionCount);
+
+  const topSupplierHubs = suppliers
+    .map(supplier => ({
+      id: supplier.id!,
+      name: supplier.name,
+      type: 'supplier' as const,
+      connectionCount: supplier.id ? (supplierToBuyers.get(supplier.id)?.size ?? 0) : 0,
+    }))
+    .filter(hub => hub.id && hub.connectionCount >= minConnections)
+    .sort((a, b) => b.connectionCount - a.connectionCount);
+
   return {
     summary: {
       totalBuyers,
@@ -115,8 +139,8 @@ export async function analyzeNetwork(
       suppliers: isolatedSuppliers,
     },
     hubs: {
-      topBuyers: [],
-      topSuppliers: [],
+      topBuyers: topBuyerHubs,
+      topSuppliers: topSupplierHubs,
     },
     metrics: {
       density,
