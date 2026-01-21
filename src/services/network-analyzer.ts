@@ -78,6 +78,24 @@ export async function analyzeNetwork(
   const buyerCoverage = totalBuyers > 0 ? buyersWithLinks / totalBuyers : 0;
   const supplierCoverage = totalSuppliers > 0 ? suppliersWithLinks / totalSuppliers : 0;
 
+  // Identify isolated nodes
+  const isolatedBuyers = buyers
+    .filter(buyer => buyer.id && !buyerToSuppliers.has(buyer.id))
+    .map(buyer => ({
+      id: buyer.id!,
+      name: buyer.name,
+      type: 'buyer' as const,
+      clientId: buyer.clientId,
+    }));
+
+  const isolatedSuppliers = suppliers
+    .filter(supplier => supplier.id && !supplierToBuyers.has(supplier.id))
+    .map(supplier => ({
+      id: supplier.id!,
+      name: supplier.name,
+      type: 'supplier' as const,
+    }));
+
   return {
     summary: {
       totalBuyers,
@@ -93,8 +111,8 @@ export async function analyzeNetwork(
       },
     },
     isolatedNodes: {
-      buyers: [],
-      suppliers: [],
+      buyers: isolatedBuyers,
+      suppliers: isolatedSuppliers,
     },
     hubs: {
       topBuyers: [],
