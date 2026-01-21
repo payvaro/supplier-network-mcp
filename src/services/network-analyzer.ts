@@ -1,5 +1,17 @@
 import type { NetworkAPIClient } from './api-client.js';
-import type { NetworkAnalysisResult } from '../types.js';
+import type { NetworkAnalysisResult, ConnectionSuggestion } from '../types.js';
+
+/**
+ * Calculate Jaccard similarity between two sets
+ */
+function jaccardSimilarity(setA: Set<string>, setB: Set<string>): number {
+  if (setA.size === 0 && setB.size === 0) return 0;
+
+  const intersection = new Set([...setA].filter(x => setB.has(x)));
+  const union = new Set([...setA, ...setB]);
+
+  return intersection.size / union.size;
+}
 
 export interface AnalyzeNetworkOptions {
   includeSuggestions?: boolean;
@@ -120,6 +132,63 @@ export async function analyzeNetwork(
     .filter(hub => hub.id && hub.connectionCount >= minConnections)
     .sort((a, b) => b.connectionCount - a.connectionCount);
 
+  // Generate connection suggestions
+  const includeSuggestions = options.includeSuggestions ?? true;
+  let suggestions: ConnectionSuggestion[] | undefined;
+
+  if (includeSuggestions) {
+    suggestions = [];
+    const supplierMap = new Map(suppliers.map(s => [s.id!, s]));
+
+    // For each buyer, find similar buyers and suggest their suppliers
+    for (const buyer of buyers) {
+      if (!buyer.id) continue;
+      const buyerSuppliers = buyerToSuppliers.get(buyer.id) ?? new Set();
+      if (buyerSuppliers.size === 0) continue;
+
+      for (const otherBuyer of buyers) {
+        if (!otherBuyer.id || otherBuyer.id === buyer.id) continue;
+        const otherSuppliers = buyerToSuppliers.get(otherBuyer.id) ?? new Set();
+        if (otherSuppliers.size === 0) continue;
+
+        // Calculate similarity
+        const similarity = jaccardSimilarity(buyerSuppliers, otherSuppliers);
+        if (similarity < 0.3) continue; // Skip if not similar enough
+
+        // Find suppliers that otherBuyer has but buyer doesn't
+        for (const supplierId of otherSuppliers) {
+          if (buyerSuppliers.has(supplierId)) continue;
+
+          const supplier = supplierMap.get(supplierId);
+          const confidence: 'high' | 'medium' | 'low' =
+            similarity >= 0.7 ? 'high' : similarity >= 0.5 ? 'medium' : 'low';
+
+          suggestions.push({
+            buyerId: buyer.id,
+            supplierId,
+            buyerName: buyer.name,
+            supplierName: supplier?.name,
+            reason: `Similar buyer "${otherBuyer.name}" uses this supplier (${Math.round(similarity * 100)}% supplier overlap)`,
+            confidence,
+          });
+        }
+      }
+    }
+
+    // Deduplicate suggestions (keep highest confidence for each buyer-supplier pair)
+    const suggestionMap = new Map<string, ConnectionSuggestion>();
+    for (const suggestion of suggestions) {
+      const key = `${suggestion.buyerId}-${suggestion.supplierId}`;
+      const existing = suggestionMap.get(key);
+      if (!existing ||
+          (suggestion.confidence === 'high' && existing.confidence !== 'high') ||
+          (suggestion.confidence === 'medium' && existing.confidence === 'low')) {
+        suggestionMap.set(key, suggestion);
+      }
+    }
+    suggestions = Array.from(suggestionMap.values());
+  }
+
   return {
     summary: {
       totalBuyers,
@@ -142,6 +211,7 @@ export async function analyzeNetwork(
       topBuyers: topBuyerHubs,
       topSuppliers: topSupplierHubs,
     },
+    suggestions,
     metrics: {
       density,
       coverage,
