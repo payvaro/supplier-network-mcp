@@ -202,5 +202,83 @@ describe('network-analyzer', () => {
         expect(isolatedIds).toContain('s3');
       });
     });
+
+    describe('network hubs', () => {
+      const mockBuyers: Buyer[] = [
+        { id: 'b1', name: 'Big Buyer', clientId: 'c1' },
+        { id: 'b2', name: 'Medium Buyer', clientId: 'c2' },
+        { id: 'b3', name: 'Small Buyer', clientId: 'c3' },
+      ];
+
+      const mockSuppliers: Supplier[] = [
+        { id: 's1', name: 'Popular Supplier' },
+        { id: 's2', name: 'Average Supplier' },
+        { id: 's3', name: 'Niche Supplier' },
+      ];
+
+      // b1 -> s1, s2, s3 (3 connections)
+      // b2 -> s1, s2 (2 connections)
+      // b3 -> s1 (1 connection)
+      // s1 <- b1, b2, b3 (3 connections)
+      // s2 <- b1, b2 (2 connections)
+      // s3 <- b1 (1 connection)
+      const mockLinks: BuyerLink[] = [
+        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+        { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
+      ];
+
+      beforeEach(() => {
+        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
+        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
+      });
+
+      it('identifies top buyer hubs sorted by connection count', async () => {
+        const result = await analyzeNetwork(mockClient as never, { minConnectionsForHub: 2 });
+
+        expect(result.hubs.topBuyers).toHaveLength(2);
+        expect(result.hubs.topBuyers[0].id).toBe('b1');
+        expect(result.hubs.topBuyers[0].connectionCount).toBe(3);
+        expect(result.hubs.topBuyers[1].id).toBe('b2');
+        expect(result.hubs.topBuyers[1].connectionCount).toBe(2);
+      });
+
+      it('identifies top supplier hubs sorted by connection count', async () => {
+        const result = await analyzeNetwork(mockClient as never, { minConnectionsForHub: 2 });
+
+        expect(result.hubs.topSuppliers).toHaveLength(2);
+        expect(result.hubs.topSuppliers[0].id).toBe('s1');
+        expect(result.hubs.topSuppliers[0].connectionCount).toBe(3);
+        expect(result.hubs.topSuppliers[1].id).toBe('s2');
+        expect(result.hubs.topSuppliers[1].connectionCount).toBe(2);
+      });
+
+      it('includes name and clientId in hub info', async () => {
+        const result = await analyzeNetwork(mockClient as never, { minConnectionsForHub: 2 });
+
+        expect(result.hubs.topBuyers[0].name).toBe('Big Buyer');
+        expect(result.hubs.topBuyers[0].clientId).toBe('c1');
+        expect(result.hubs.topSuppliers[0].name).toBe('Popular Supplier');
+      });
+
+      it('respects minConnectionsForHub threshold', async () => {
+        const result = await analyzeNetwork(mockClient as never, { minConnectionsForHub: 3 });
+
+        expect(result.hubs.topBuyers).toHaveLength(1);
+        expect(result.hubs.topSuppliers).toHaveLength(1);
+      });
+
+      it('uses default minConnectionsForHub of 5', async () => {
+        const result = await analyzeNetwork(mockClient as never);
+
+        // No nodes have 5+ connections
+        expect(result.hubs.topBuyers).toHaveLength(0);
+        expect(result.hubs.topSuppliers).toHaveLength(0);
+      });
+    });
   });
 });
