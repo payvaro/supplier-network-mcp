@@ -302,3 +302,24 @@ export interface RelationshipAnalysisResult {
   recommendations: string[];
   generatedAt: string;
 }
+
+// Slack notification types
+export type SlackMessageType = 'general' | 'analysis';
+
+export interface SlackActionButton {
+  text: string;
+  url: string;
+  style?: 'primary' | 'danger';  // primary=green, danger=red
+}
+
+export interface SlackGeneralMessage {
+  title?: string;                  // Header text (optional)
+  body: string;                    // Main markdown content (required)
+  fields?: Array<{                 // Key-value pairs displayed in grid
+    label: string;
+    value: string;
+  }>;
+  actions?: SlackActionButton[];   // Clickable buttons with URLs
+  footer?: string;                 // Custom footer text
+  color?: 'good' | 'warning' | 'danger';  // Attachment sidebar color
+}

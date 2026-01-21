@@ -1,9 +1,18 @@
 import axios from "axios";
-import type { NetworkAnalysisResult } from "../types.js";
+import type { NetworkAnalysisResult, SlackGeneralMessage } from "../types.js";
 
 export interface SlackBlock {
   type: string;
   [key: string]: unknown;
+}
+
+export interface SlackPayload {
+  blocks: SlackBlock[];
+  text?: string;  // Fallback text for notifications
+  attachments?: Array<{
+    color: string;
+    blocks: SlackBlock[];
+  }>;
 }
 
 /**
@@ -268,6 +277,75 @@ export function normalizeAnalysisResult(
 }
 
 /**
+ * Format a general message into Slack Block Kit format
+ */
+export function formatGeneralMessage(message: SlackGeneralMessage): SlackPayload {
+  const blocks: SlackBlock[] = [];
+
+  // Optional header
+  if (message.title) {
+    blocks.push({
+      type: 'header',
+      text: { type: 'plain_text', text: message.title, emoji: true }
+    });
+    blocks.push({ type: 'divider' });
+  }
+
+  // Body as markdown section
+  blocks.push({
+    type: 'section',
+    text: { type: 'mrkdwn', text: message.body }
+  });
+
+  // Optional fields (displayed as 2-column grid, max 10 per section)
+  if (message.fields?.length) {
+    blocks.push({
+      type: 'section',
+      fields: message.fields.map(f => ({
+        type: 'mrkdwn',
+        text: `*${f.label}:*\n${f.value}`
+      }))
+    });
+  }
+
+  // Optional action buttons
+  if (message.actions?.length) {
+    blocks.push({
+      type: 'actions',
+      elements: message.actions.map(action => ({
+        type: 'button',
+        text: { type: 'plain_text', text: action.text, emoji: true },
+        url: action.url,
+        ...(action.style && { style: action.style })
+      }))
+    });
+  }
+
+  // Footer with timestamp
+  const timestamp = new Date().toISOString();
+  blocks.push({
+    type: 'context',
+    elements: [{
+      type: 'mrkdwn',
+      text: message.footer ? `${message.footer} • ${timestamp}` : timestamp
+    }]
+  });
+
+  // Build payload - use attachments for color sidebar
+  const payload: SlackPayload = { blocks };
+  if (message.color) {
+    payload.attachments = [{
+      color: message.color === 'good' ? '#36a64f'
+           : message.color === 'warning' ? '#daa038'
+           : '#a30200',  // danger
+      blocks: []  // Empty - color shows as sidebar
+    }];
+  }
+
+  return payload;
+}
+
+/**
  * Format analysis results into Slack Block Kit format
  */
 export function formatAnalysisForSlack(
@@ -458,6 +536,48 @@ export async function postToSlack(
     blocks,
     text: "Network Analysis Summary", // Fallback text for notifications
   };
+
+  try {
+    const response = await axios.post(webhookUrl, payload, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      timeout: 10000, // 10 second timeout
+    });
+
+    if (response.status !== 200) {
+      throw new Error(
+        `Slack webhook returned status ${response.status}: ${response.statusText}`
+      );
+    }
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response) {
+        throw new Error(
+          `Slack API error: ${error.response.status} - ${JSON.stringify(error.response.data)}`
+        );
+      } else if (error.request) {
+        throw new Error(
+          `No response from Slack webhook. Please check the URL and network connection.`
+        );
+      }
+    }
+    throw new Error(`Slack notification failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Post a general message to Slack via webhook
+ */
+export async function postGeneralMessage(
+  webhookUrl: string,
+  message: SlackGeneralMessage
+): Promise<void> {
+  if (!webhookUrl) {
+    throw new Error('Slack webhook URL is required');
+  }
+
+  const payload = formatGeneralMessage(message);
 
   try {
     const response = await axios.post(webhookUrl, payload, {
