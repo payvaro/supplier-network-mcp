@@ -29,6 +29,7 @@ import {
   SlackGeneralNotificationSchema,
   ImportAnalysisSchema,
   RelationshipAnalysisSchema,
+  LookupClientIdSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -61,6 +62,8 @@ import {
   analyzeImport,
   analyzeRelationships,
 } from "./tools/workflows.js";
+
+import { lookupClientId } from "./tools/clients.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
@@ -719,6 +722,28 @@ function createServer() {
             required: ["analysisType"],
           },
         },
+        {
+          name: "network_lookup_client_id",
+          description:
+            "Look up a client ID by human-friendly name. Fuzzy matches against client names from the configuration store. Returns the matched client name and UUID. Useful when you know a client name like 'Comet Electric' but need their client ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description:
+                  "Human-friendly client name to search for (e.g. 'Comet Electric', 'Acumatica')",
+              },
+              environment: {
+                type: "string",
+                enum: ["dev", "prod"],
+                description: "Target environment (default: dev)",
+                default: "dev",
+              },
+            },
+            required: ["name"],
+          },
+        },
       ],
     };
     
@@ -847,6 +872,12 @@ function createServer() {
         case "network_analyze_relationships": {
           const params = RelationshipAnalysisSchema.parse(args);
           response = await analyzeRelationships(params);
+          break;
+        }
+
+        case "network_lookup_client_id": {
+          const params = LookupClientIdSchema.parse(args);
+          response = await lookupClientId(params);
           break;
         }
 

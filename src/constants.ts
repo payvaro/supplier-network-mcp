@@ -43,6 +43,12 @@ export enum ConnectionStatus {
   PENDING = "PENDING"
 }
 
+// Client lookup S3 configuration
+export const CLIENT_CONFIG_BUCKET_PREFIX = "payvaro-configuration";
+export const CLIENT_CONFIG_KEY = "clients.json";
+export const CLIENT_CONFIG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const CLIENT_CONFIG_DEFAULT_ENV = "dev";
+
 // Contact types
 export enum ContactType {
   PRIMARY = "PRIMARY",

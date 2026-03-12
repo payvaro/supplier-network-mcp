@@ -298,3 +298,15 @@ export type SlackNotificationInput = z.infer<typeof SlackNotificationSchema>;
 export type SlackGeneralNotificationInput = z.infer<typeof SlackGeneralNotificationSchema>;
 export type ImportAnalysisInput = z.infer<typeof ImportAnalysisSchema>;
 export type RelationshipAnalysisInput = z.infer<typeof RelationshipAnalysisSchema>;
+
+// Client lookup schema
+export const LookupClientIdSchema = z.object({
+  name: z.string()
+    .min(1, "Client name cannot be empty")
+    .describe("Human-friendly client name to look up (e.g. 'Comet Electric', 'Acumatica')"),
+  environment: z.enum(["dev", "prod"])
+    .default("dev")
+    .describe("Target environment to look up the client ID for"),
+}).strict();
+
+export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;

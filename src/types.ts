@@ -303,6 +303,24 @@ export interface RelationshipAnalysisResult {
   generatedAt: string;
 }
 
+// Client configuration (from S3 clients.json)
+export interface ClientRecord {
+  id: string;
+  name: string;
+  tokens: string[];
+  networkAccessList: string[];
+  paymentsAccessList: string[];
+}
+
+export interface ClientsConfig {
+  clients: ClientRecord[];
+}
+
+export interface ClientLookupResult {
+  clientId: string;
+  name: string;
+}
+
 // Slack notification types
 export type SlackMessageType = 'general' | 'analysis';
 

@@ -18,6 +18,7 @@ import {
   AddressSchema,
   ResponseFormatSchema,
   HistoryFormatSchema,
+  LookupClientIdSchema,
 } from '../index.js';
 import { ResponseFormat, HistoryFormat } from '../../constants.js';
 
@@ -508,6 +509,34 @@ describe('schemas', () => {
 
     it('rejects invalid format', () => {
       const result = HistoryFormatSchema.safeParse('detailed');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('LookupClientIdSchema', () => {
+    it('requires non-empty name', () => {
+      const empty = LookupClientIdSchema.safeParse({ name: '' });
+      expect(empty.success).toBe(false);
+    });
+
+    it('accepts valid name with default environment', () => {
+      const result = LookupClientIdSchema.safeParse({ name: 'Comet Electric' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.environment).toBe('dev');
+      }
+    });
+
+    it('accepts explicit environment', () => {
+      const result = LookupClientIdSchema.safeParse({ name: 'Comet Electric', environment: 'prod' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.environment).toBe('prod');
+      }
+    });
+
+    it('rejects invalid environment', () => {
+      const result = LookupClientIdSchema.safeParse({ name: 'Comet Electric', environment: 'staging' });
       expect(result.success).toBe(false);
     });
   });
