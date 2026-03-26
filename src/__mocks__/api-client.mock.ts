@@ -12,13 +12,15 @@ export interface MockNetworkAPIClient {
   getSuppliersByDate: Mock<(date: string) => Promise<Supplier[]>>;
   getSuppliersByFromDate: Mock<(fromDate: string) => Promise<Supplier[]>>;
   getSupplierHistory: Mock<(id: string, format?: string) => Promise<unknown>>;
-  listBuyers: Mock<() => Promise<Buyer[]>>;
+  listBuyers: Mock<(includeLinks?: boolean) => Promise<Buyer[]>>;
+  getAllBuyers: Mock<(includeLinks?: boolean) => Promise<Buyer[]>>;
   getBuyer: Mock<(id: string) => Promise<Buyer>>;
   getBuyerByClientId: Mock<(clientId: string) => Promise<Buyer>>;
   createBuyer: Mock<(buyer: Partial<Buyer>) => Promise<Buyer>>;
   getSuppliersForBuyer: Mock<(buyerId: string) => Promise<Supplier[]>>;
   getBuyersForSupplier: Mock<(supplierId: string) => Promise<BuyerLink[]>>;
   listBuyerLinks: Mock<() => Promise<BuyerLink[]>>;
+  getAllBuyerLinks: Mock<() => Promise<BuyerLink[]>>;
   getBuyerLink: Mock<(buyerId: string, supplierId: string) => Promise<BuyerLink>>;
   createBuyerLink: Mock<(link: Partial<BuyerLink>) => Promise<BuyerLink>>;
   getBuyerLinksByRefKey: Mock<(buyerRefKey: string) => Promise<BuyerLink[]>>;
@@ -42,6 +44,7 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
 
     // Buyer methods
     listBuyers: vi.fn(),
+    getAllBuyers: vi.fn(),
     getBuyer: vi.fn(),
     getBuyerByClientId: vi.fn(),
     createBuyer: vi.fn(),
@@ -50,6 +53,7 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
 
     // Link methods
     listBuyerLinks: vi.fn(),
+    getAllBuyerLinks: vi.fn(),
     getBuyerLink: vi.fn(),
     createBuyerLink: vi.fn(),
     getBuyerLinksByRefKey: vi.fn(),

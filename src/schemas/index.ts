@@ -202,7 +202,7 @@ export const NetworkAnalysisSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
-// Slack notification schema
+// Slack notification schema (for analysis results - backward compatible)
 export const SlackNotificationSchema = z.object({
   webhookUrl: z.string()
     .url("Must be a valid URL")
@@ -219,6 +219,36 @@ export const SlackNotificationSchema = z.object({
   includeDetails: z.boolean()
     .default(false)
     .describe("Whether to include detailed breakdowns in the Slack message"),
+  response_format: ResponseFormatSchema
+}).strict();
+
+// Slack general message schemas
+export const SlackActionButtonSchema = z.object({
+  text: z.string().min(1).max(75),  // Slack limit
+  url: z.string().url(),
+  style: z.enum(['primary', 'danger']).optional()
+});
+
+export const SlackGeneralMessageSchema = z.object({
+  title: z.string().max(150).optional(),
+  body: z.string().min(1).max(3000),  // Slack section text limit
+  fields: z.array(z.object({
+    label: z.string().max(50),
+    value: z.string().max(500)
+  })).max(10).optional(),  // Slack fields limit
+  actions: z.array(SlackActionButtonSchema).max(5).optional(),
+  footer: z.string().max(200).optional(),
+  color: z.enum(['good', 'warning', 'danger']).optional()
+});
+
+// Schema for the new general message tool
+export const SlackGeneralNotificationSchema = z.object({
+  webhookUrl: z.string()
+    .url("Must be a valid URL")
+    .optional()
+    .describe("Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)"),
+  message: SlackGeneralMessageSchema
+    .describe("The message content to send to Slack"),
   response_format: ResponseFormatSchema
 }).strict();
 
@@ -265,5 +295,18 @@ export type CreateBuyerInput = z.infer<typeof CreateBuyerSchema>;
 export type UploadFileInput = z.infer<typeof UploadFileSchema>;
 export type NetworkAnalysisInput = z.infer<typeof NetworkAnalysisSchema>;
 export type SlackNotificationInput = z.infer<typeof SlackNotificationSchema>;
+export type SlackGeneralNotificationInput = z.infer<typeof SlackGeneralNotificationSchema>;
 export type ImportAnalysisInput = z.infer<typeof ImportAnalysisSchema>;
 export type RelationshipAnalysisInput = z.infer<typeof RelationshipAnalysisSchema>;
+
+// Client lookup schema
+export const LookupClientIdSchema = z.object({
+  name: z.string()
+    .min(1, "Client name cannot be empty")
+    .describe("Human-friendly client name to look up (e.g. 'Comet Electric', 'Acumatica')"),
+  environment: z.enum(["dev", "prod"])
+    .default("dev")
+    .describe("Target environment to look up the client ID for"),
+}).strict();
+
+export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;

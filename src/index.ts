@@ -24,9 +24,12 @@ import {
   CreateBuyerLinkSchema,
   CreateBuyerSchema,
   UploadFileSchema,
+  NetworkAnalysisSchema,
   SlackNotificationSchema,
+  SlackGeneralNotificationSchema,
   ImportAnalysisSchema,
   RelationshipAnalysisSchema,
+  LookupClientIdSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -50,13 +53,17 @@ import {
 } from "./tools/buyers.js";
 
 import {
+  analyzeNetworkConnections,
   notifySlack,
+  sendSlackMessage,
 } from "./tools/analysis.js";
 
 import {
   analyzeImport,
   analyzeRelationships,
 } from "./tools/workflows.js";
+
+import { lookupClientId } from "./tools/clients.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
@@ -477,6 +484,33 @@ function createServer() {
           },
         },
         {
+          name: "network_analyze_connections",
+          description:
+            "Analyze the buyer-supplier network to identify isolated nodes, network hubs, connection patterns, and suggest new links. Returns structured analysis that can be sent to Slack.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              includeSuggestions: {
+                type: "boolean",
+                description: "Include connection suggestions in the analysis",
+                default: true,
+              },
+              minConnectionsForHub: {
+                type: "number",
+                description: "Minimum connections to be considered a network hub",
+                default: 5,
+                minimum: 1,
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
+        {
           name: "network_notify_slack",
           description:
             "Post network analysis results to Slack via webhook for team decision-making. Takes the structured result from network_analyze_connections and formats it as a Slack message.",
@@ -516,6 +550,99 @@ function createServer() {
               },
             },
             required: ["analysisResult"],
+          },
+        },
+        {
+          name: "network_send_slack_message",
+          description:
+            "Send a general message to Slack with customizable title, body text, key-value fields, action buttons, and color indicator. Use this for notifications, alerts, or any structured message that doesn't require the full network analysis format.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              webhookUrl: {
+                type: "string",
+                description:
+                  "Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)",
+              },
+              message: {
+                type: "object",
+                description: "The message content to send",
+                properties: {
+                  title: {
+                    type: "string",
+                    description: "Optional header text (max 150 chars)",
+                    maxLength: 150,
+                  },
+                  body: {
+                    type: "string",
+                    description: "Main message content with Slack markdown support (required, max 3000 chars)",
+                    maxLength: 3000,
+                  },
+                  fields: {
+                    type: "array",
+                    description: "Key-value pairs displayed in a 2-column grid (max 10)",
+                    maxItems: 10,
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: {
+                          type: "string",
+                          maxLength: 50,
+                        },
+                        value: {
+                          type: "string",
+                          maxLength: 500,
+                        },
+                      },
+                      required: ["label", "value"],
+                    },
+                  },
+                  actions: {
+                    type: "array",
+                    description: "Clickable buttons with URLs (max 5)",
+                    maxItems: 5,
+                    items: {
+                      type: "object",
+                      properties: {
+                        text: {
+                          type: "string",
+                          description: "Button text (max 75 chars)",
+                          maxLength: 75,
+                        },
+                        url: {
+                          type: "string",
+                          description: "URL to open when clicked",
+                        },
+                        style: {
+                          type: "string",
+                          enum: ["primary", "danger"],
+                          description: "Button style: primary (green) or danger (red)",
+                        },
+                      },
+                      required: ["text", "url"],
+                    },
+                  },
+                  footer: {
+                    type: "string",
+                    description: "Custom footer text (max 200 chars)",
+                    maxLength: 200,
+                  },
+                  color: {
+                    type: "string",
+                    enum: ["good", "warning", "danger"],
+                    description: "Sidebar color indicator: good (green), warning (yellow), danger (red)",
+                  },
+                },
+                required: ["body"],
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["message"],
           },
         },
         {
@@ -593,6 +720,28 @@ function createServer() {
               },
             },
             required: ["analysisType"],
+          },
+        },
+        {
+          name: "network_lookup_client_id",
+          description:
+            "Look up a client ID by human-friendly name. Fuzzy matches against client names from the configuration store. Returns the matched client name and UUID. Useful when you know a client name like 'Comet Electric' but need their client ID.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              name: {
+                type: "string",
+                description:
+                  "Human-friendly client name to search for (e.g. 'Comet Electric', 'Acumatica')",
+              },
+              environment: {
+                type: "string",
+                enum: ["dev", "prod"],
+                description: "Target environment (default: dev)",
+                default: "dev",
+              },
+            },
+            required: ["name"],
           },
         },
       ],
@@ -696,9 +845,21 @@ function createServer() {
           break;
         }
 
+        case "network_analyze_connections": {
+          const params = NetworkAnalysisSchema.parse(args);
+          response = await analyzeNetworkConnections(params);
+          break;
+        }
+
         case "network_notify_slack": {
           const params = SlackNotificationSchema.parse(args);
           response = await notifySlack(params);
+          break;
+        }
+
+        case "network_send_slack_message": {
+          const params = SlackGeneralNotificationSchema.parse(args);
+          response = await sendSlackMessage(params);
           break;
         }
 
@@ -711,6 +872,12 @@ function createServer() {
         case "network_analyze_relationships": {
           const params = RelationshipAnalysisSchema.parse(args);
           response = await analyzeRelationships(params);
+          break;
+        }
+
+        case "network_lookup_client_id": {
+          const params = LookupClientIdSchema.parse(args);
+          response = await lookupClientId(params);
           break;
         }
 

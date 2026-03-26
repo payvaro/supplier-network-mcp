@@ -1,11 +1,12 @@
 import { getNetworkAPIClient } from "../services/api-client.js";
 import { analyzeNetwork } from "../services/network-analyzer.js";
-import { postToSlack, normalizeAnalysisResult } from "../services/slack-notifier.js";
+import { postToSlack, postGeneralMessage, normalizeAnalysisResult } from "../services/slack-notifier.js";
 import { formatOutput, createErrorResponse } from "../services/formatter.js";
 import { DEFAULT_SLACK_WEBHOOK_URL } from "../constants.js";
 import type {
   NetworkAnalysisInput,
   SlackNotificationInput,
+  SlackGeneralNotificationInput,
 } from "../schemas/index.js";
 import type { NetworkAnalysisResult } from "../types.js";
 
@@ -240,6 +241,61 @@ export async function notifySlack(params: SlackNotificationInput) {
     };
   } catch (error) {
     console.error('notifySlack error:', error);
+    const errorResponse = createErrorResponse(
+      error instanceof Error ? error.message : String(error)
+    );
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: errorResponse.text,
+        },
+      ],
+    };
+  }
+}
+
+/**
+ * Send a general message to Slack
+ */
+export async function sendSlackMessage(params: SlackGeneralNotificationInput) {
+  try {
+    // Get webhook URL from parameter or environment variable
+    const webhookUrl = params.webhookUrl || DEFAULT_SLACK_WEBHOOK_URL;
+
+    if (!webhookUrl) {
+      throw new Error(
+        "Slack webhook URL is required. Either provide webhookUrl parameter or set SLACK_WEBHOOK_URL environment variable."
+      );
+    }
+
+    // Post to Slack
+    await postGeneralMessage(webhookUrl, params.message);
+
+    const formatted = formatOutput(
+      { success: true, message: "Successfully posted message to Slack" },
+      params.response_format,
+      () => {
+        const parts = ["# Slack Message Sent\n", "✅ Successfully posted message to Slack.\n"];
+        if (params.message.title) {
+          parts.push(`**Title:** ${params.message.title}`);
+        }
+        return parts.join("\n");
+      }
+    );
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: formatted.text,
+        },
+      ],
+      structuredContent: formatted.structuredData,
+    };
+  } catch (error) {
+    console.error('sendSlackMessage error:', error);
     const errorResponse = createErrorResponse(
       error instanceof Error ? error.message : String(error)
     );
