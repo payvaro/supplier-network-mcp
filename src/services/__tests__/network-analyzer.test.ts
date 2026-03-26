@@ -13,9 +13,8 @@ describe('network-analyzer', () => {
   describe('analyzeNetwork', () => {
     describe('with empty network', () => {
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue([]);
+        mockClient.getAllBuyers.mockResolvedValue([]);
         mockClient.getAllSuppliers.mockResolvedValue([]);
-        mockClient.listBuyerLinks.mockResolvedValue([]);
       });
 
       it('returns zero counts for empty network', async () => {
@@ -58,10 +57,26 @@ describe('network-analyzer', () => {
     });
 
     describe('with populated network', () => {
+      // Links embedded in buyers (as returned by getAllBuyers with includeLinks=true)
       const mockBuyers: Buyer[] = [
-        { id: 'b1', name: 'Buyer 1', clientId: 'c1' },
-        { id: 'b2', name: 'Buyer 2', clientId: 'c2' },
-        { id: 'b3', name: 'Buyer 3', clientId: 'c3' },
+        {
+          id: 'b1',
+          name: 'Buyer 1',
+          clientId: 'c1',
+          buyerLinks: [
+            { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b2',
+          name: 'Buyer 2',
+          clientId: 'c2',
+          buyerLinks: [
+            { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        { id: 'b3', name: 'Buyer 3', clientId: 'c3', buyerLinks: [] },
       ];
 
       const mockSuppliers: Supplier[] = [
@@ -69,16 +84,9 @@ describe('network-analyzer', () => {
         { id: 's2', name: 'Supplier 2' },
       ];
 
-      const mockLinks: BuyerLink[] = [
-        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
-      ];
-
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllBuyers.mockResolvedValue(mockBuyers);
         mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
-        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
       });
 
       it('returns correct total counts', async () => {
@@ -174,7 +182,13 @@ describe('network-analyzer', () => {
 
     describe('with isolated suppliers', () => {
       const mockBuyers: Buyer[] = [
-        { id: 'b1', name: 'Buyer 1' },
+        {
+          id: 'b1',
+          name: 'Buyer 1',
+          buyerLinks: [
+            { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+          ],
+        },
       ];
 
       const mockSuppliers: Supplier[] = [
@@ -183,14 +197,9 @@ describe('network-analyzer', () => {
         { id: 's3', name: 'Supplier 3' },
       ];
 
-      const mockLinks: BuyerLink[] = [
-        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
-      ];
-
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllBuyers.mockResolvedValue(mockBuyers);
         mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
-        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
       });
 
       it('identifies isolated suppliers', async () => {
@@ -205,9 +214,33 @@ describe('network-analyzer', () => {
 
     describe('network hubs', () => {
       const mockBuyers: Buyer[] = [
-        { id: 'b1', name: 'Big Buyer', clientId: 'c1' },
-        { id: 'b2', name: 'Medium Buyer', clientId: 'c2' },
-        { id: 'b3', name: 'Small Buyer', clientId: 'c3' },
+        {
+          id: 'b1',
+          name: 'Big Buyer',
+          clientId: 'c1',
+          buyerLinks: [
+            { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b2',
+          name: 'Medium Buyer',
+          clientId: 'c2',
+          buyerLinks: [
+            { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b3',
+          name: 'Small Buyer',
+          clientId: 'c3',
+          buyerLinks: [
+            { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
+          ],
+        },
       ];
 
       const mockSuppliers: Supplier[] = [
@@ -216,25 +249,9 @@ describe('network-analyzer', () => {
         { id: 's3', name: 'Niche Supplier' },
       ];
 
-      // b1 -> s1, s2, s3 (3 connections)
-      // b2 -> s1, s2 (2 connections)
-      // b3 -> s1 (1 connection)
-      // s1 <- b1, b2, b3 (3 connections)
-      // s2 <- b1, b2 (2 connections)
-      // s3 <- b1 (1 connection)
-      const mockLinks: BuyerLink[] = [
-        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
-      ];
-
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllBuyers.mockResolvedValue(mockBuyers);
         mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
-        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
       });
 
       it('identifies top buyer hubs sorted by connection count', async () => {
@@ -286,8 +303,23 @@ describe('network-analyzer', () => {
       // b1 also uses s3, but b2 does not
       // Suggestion: b2 should consider s3 (used by similar buyer b1)
       const mockBuyers: Buyer[] = [
-        { id: 'b1', name: 'Buyer One' },
-        { id: 'b2', name: 'Buyer Two' },
+        {
+          id: 'b1',
+          name: 'Buyer One',
+          buyerLinks: [
+            { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b2',
+          name: 'Buyer Two',
+          buyerLinks: [
+            { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+          ],
+        },
       ];
 
       const mockSuppliers: Supplier[] = [
@@ -296,18 +328,9 @@ describe('network-analyzer', () => {
         { id: 's3', name: 'Unique Supplier' },
       ];
 
-      const mockLinks: BuyerLink[] = [
-        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
-      ];
-
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllBuyers.mockResolvedValue(mockBuyers);
         mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
-        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
       });
 
       it('returns suggestions when includeSuggestions is true', async () => {
@@ -358,10 +381,34 @@ describe('network-analyzer', () => {
 
     describe('full analysis integration', () => {
       const mockBuyers: Buyer[] = [
-        { id: 'b1', name: 'Alpha Corp', clientId: 'c1' },
-        { id: 'b2', name: 'Beta Inc', clientId: 'c2' },
-        { id: 'b3', name: 'Gamma LLC', clientId: 'c3' },
-        { id: 'b4', name: 'Delta Co', clientId: 'c4' },
+        {
+          id: 'b1',
+          name: 'Alpha Corp',
+          clientId: 'c1',
+          buyerLinks: [
+            { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b2',
+          name: 'Beta Inc',
+          clientId: 'c2',
+          buyerLinks: [
+            { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
+            { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        {
+          id: 'b3',
+          name: 'Gamma LLC',
+          clientId: 'c3',
+          buyerLinks: [
+            { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
+          ],
+        },
+        { id: 'b4', name: 'Delta Co', clientId: 'c4', buyerLinks: [] },
       ];
 
       const mockSuppliers: Supplier[] = [
@@ -371,19 +418,9 @@ describe('network-analyzer', () => {
         { id: 's4', name: 'Equipment Ltd' },
       ];
 
-      const mockLinks: BuyerLink[] = [
-        { buyerId: 'b1', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b1', supplierId: 's3', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's1', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b2', supplierId: 's2', connectionStatus: 'ACTIVE' },
-        { buyerId: 'b3', supplierId: 's1', connectionStatus: 'ACTIVE' },
-      ];
-
       beforeEach(() => {
-        mockClient.listBuyers.mockResolvedValue(mockBuyers);
+        mockClient.getAllBuyers.mockResolvedValue(mockBuyers);
         mockClient.getAllSuppliers.mockResolvedValue(mockSuppliers);
-        mockClient.listBuyerLinks.mockResolvedValue(mockLinks);
       });
 
       it('returns complete NetworkAnalysisResult structure', async () => {
@@ -426,7 +463,7 @@ describe('network-analyzer', () => {
       });
 
       it('handles API errors gracefully', async () => {
-        mockClient.listBuyers.mockRejectedValue(new Error('API error'));
+        mockClient.getAllBuyers.mockRejectedValue(new Error('API error'));
 
         await expect(analyzeNetwork(mockClient as never)).rejects.toThrow('API error');
       });

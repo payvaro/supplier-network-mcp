@@ -340,7 +340,7 @@ export class NetworkAPIClient {
   }
 
   /**
-   * List all buyers
+   * List buyers (first page only)
    */
   async listBuyers(includeLinks: boolean = false): Promise<Buyer[]> {
     try {
@@ -359,6 +359,41 @@ export class NetworkAPIClient {
     } catch (error) {
       throw this.handleError(error);
     }
+  }
+
+  /**
+   * Get all buyers with pagination handling
+   */
+  async getAllBuyers(includeLinks: boolean = false): Promise<Buyer[]> {
+    const allBuyers: Buyer[] = [];
+    let cursor: string | undefined;
+    const pageSize = 100;
+
+    do {
+      const params: Record<string, unknown> = { pageSize, includeLinks };
+      if (cursor) {
+        params.cursor = cursor;
+      }
+
+      const response = await this.client.get<Buyer[] | PaginatedResponse<Buyer>>("/api/buyers", { params });
+
+      // Handle direct array response (no pagination)
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+
+      // Handle paginated response
+      if (response.data && 'items' in response.data) {
+        allBuyers.push(...response.data.items);
+        cursor = response.data.pagination?.hasMore && response.data.pagination?.nextCursor
+          ? response.data.pagination.nextCursor
+          : undefined;
+      } else {
+        break;
+      }
+    } while (cursor);
+
+    return allBuyers;
   }
 
   /**
@@ -427,14 +462,66 @@ export class NetworkAPIClient {
 
   /**
    * List all buyer-supplier links
+   * Handles both array and paginated response formats
    */
   async listBuyerLinks(): Promise<BuyerLink[]> {
     try {
-      const response = await this.client.get<BuyerLink[]>("/api/buyer-links");
-      return response.data;
+      const response = await this.client.get<BuyerLink[] | PaginatedResponse<BuyerLink>>("/api/buyer-links");
+
+      // Handle direct array response
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+
+      // Handle paginated response
+      if (response.data && 'items' in response.data) {
+        // If paginated and has more pages, fetch all
+        if (response.data.pagination?.hasMore) {
+          return this.getAllBuyerLinks();
+        }
+        return response.data.items;
+      }
+
+      console.error('[api-client] Unexpected listBuyerLinks response format:', typeof response.data);
+      return [];
     } catch (error) {
       throw this.handleError(error);
     }
+  }
+
+  /**
+   * Get all buyer links with pagination handling
+   */
+  async getAllBuyerLinks(): Promise<BuyerLink[]> {
+    const allLinks: BuyerLink[] = [];
+    let cursor: string | undefined;
+    const pageSize = 100;
+
+    do {
+      const params: Record<string, unknown> = { pageSize };
+      if (cursor) {
+        params.cursor = cursor;
+      }
+
+      const response = await this.client.get<BuyerLink[] | PaginatedResponse<BuyerLink>>("/api/buyer-links", { params });
+
+      // Handle direct array response (no pagination)
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+
+      // Handle paginated response
+      if (response.data && 'items' in response.data) {
+        allLinks.push(...response.data.items);
+        cursor = response.data.pagination?.hasMore && response.data.pagination?.nextCursor
+          ? response.data.pagination.nextCursor
+          : undefined;
+      } else {
+        break;
+      }
+    } while (cursor);
+
+    return allLinks;
   }
 
   /**

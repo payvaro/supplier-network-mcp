@@ -1,5 +1,5 @@
 import type { NetworkAPIClient } from './api-client.js';
-import type { NetworkAnalysisResult, ConnectionSuggestion } from '../types.js';
+import type { NetworkAnalysisResult, ConnectionSuggestion, BuyerLink } from '../types.js';
 
 /**
  * Calculate Jaccard similarity between two sets
@@ -25,12 +25,14 @@ export async function analyzeNetwork(
   client: NetworkAPIClient,
   options: AnalyzeNetworkOptions = {}
 ): Promise<NetworkAnalysisResult> {
-  // Fetch all data
-  const [buyers, suppliers, links] = await Promise.all([
-    client.listBuyers(),
+  // Fetch all data - use includeLinks=true to get links embedded in buyers
+  const [buyers, suppliers] = await Promise.all([
+    client.getAllBuyers(true),
     client.getAllSuppliers(),
-    client.listBuyerLinks(),
   ]);
+
+  // Extract links from buyers (each buyer has buyerLinks when includeLinks=true)
+  const links: BuyerLink[] = buyers.flatMap(buyer => buyer.buyerLinks ?? []);
 
   // Build connection maps
   const buyerToSuppliers = new Map<string, Set<string>>();
