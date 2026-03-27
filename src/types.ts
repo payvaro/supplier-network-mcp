@@ -58,6 +58,22 @@ export interface AggregatorLink {
   buyerRefKey?: string;
 }
 
+export interface EntityTypeResult {
+  successCount: number;
+  failureCount: number;
+}
+
+export interface FileImportJob {
+  id: string;
+  clientId: string;
+  sourceFilename: string;
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "DISCARDED";
+  fileProcessingRecordIds: string[];
+  createdEntityCount: number;
+  entityTypeSummaries: Record<string, EntityTypeResult>;
+  createdAt: string;
+}
+
 export interface Supplier {
   id?: string;
   name?: string;
@@ -250,6 +266,42 @@ export interface ImportAnalysisResult {
   summary: ImportAnalysisSummary;
   duplicates: ImportDuplicate[];
   qualityMetrics?: QualityMetrics;
+  recommendations: string[];
+  generatedAt: string;
+}
+
+// Data validation types
+export type ValidationSeverity = "error" | "warning" | "info";
+
+export interface FieldValidationIssue {
+  field: string;
+  value: string;
+  rule: string;
+  message: string;
+  severity: ValidationSeverity;
+  suggestion: string;
+}
+
+export interface SupplierValidationResult {
+  supplierId: string;
+  supplierName?: string;
+  issues: FieldValidationIssue[];
+  issueCount: number;
+  highestSeverity: ValidationSeverity;
+}
+
+export interface ValidationSummary {
+  totalSuppliersScanned: number;
+  suppliersWithIssues: number;
+  totalIssues: number;
+  issuesByField: Record<string, number>;
+  issuesBySeverity: Record<ValidationSeverity, number>;
+  issuesByRule: Record<string, number>;
+}
+
+export interface DataValidationResult {
+  summary: ValidationSummary;
+  suppliers: SupplierValidationResult[];
   recommendations: string[];
   generatedAt: string;
 }

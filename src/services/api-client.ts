@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER, CLIENT_ID_HEADER } from "../constants.js";
-import type { Supplier, Buyer, BuyerLink, AggregatorLink, PaginatedResponse } from "../types.js";
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, PaginatedResponse } from "../types.js";
 
 /**
  * Sanitizes an API key for use in HTTP headers by removing invalid characters.
@@ -521,6 +521,41 @@ export class NetworkAPIClient {
       if (error instanceof Error && (error as NodeJS.ErrnoException).code === "EACCES") {
         throw new Error(`Permission denied: Cannot read file ${filePath}`);
       }
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * List file import jobs
+   */
+  async listFileImportJobs(limit: number = 20): Promise<FileImportJob[]> {
+    try {
+      const response = await this.client.get<FileImportJob[] | PaginatedResponse<FileImportJob>>("/api/file-import-jobs", {
+        params: { limit },
+      });
+
+      if (Array.isArray(response.data)) {
+        return response.data;
+      }
+
+      if (response.data && "items" in response.data) {
+        return response.data.items;
+      }
+
+      return [];
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get a specific file import job by ID
+   */
+  async getFileImportJob(jobId: string): Promise<FileImportJob> {
+    try {
+      const response = await this.client.get<FileImportJob>(`/api/file-import-jobs/${jobId}`);
+      return response.data;
+    } catch (error) {
       throw this.handleError(error);
     }
   }

@@ -5,12 +5,16 @@ import {
   analyzeCoverage,
   buildRelationshipMap,
 } from "../services/relationship-analyzer.js";
+import { validateImportData as runDataValidation } from "../services/data-validator.js";
 import { formatOutput, createErrorResponse, formatAddress } from "../services/formatter.js";
-import type { ImportAnalysisInput, RelationshipAnalysisInput } from "../schemas/index.js";
+import type { ImportAnalysisInput, RelationshipAnalysisInput, DataValidationInput, ListImportBatchesInput } from "../schemas/index.js";
 import type {
   ImportAnalysisResult,
   RelationshipAnalysisResult,
   ImportDuplicate,
+  DataValidationResult,
+  SupplierValidationResult,
+  FileImportJob,
 } from "../types.js";
 
 /**
@@ -357,6 +361,276 @@ function formatRelationshipAnalysisMarkdown(result: RelationshipAnalysisResult):
     parts.push(`- ${rec}`);
   }
   parts.push("");
+
+  return parts.join("\n");
+}
+
+/**
+ * Validate import data - checks for garbage/invalid content
+ */
+export async function validateImportDataTool(params: DataValidationInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const result = await runDataValidation(client, params.dateRange, params.buyerId);
+
+    const formatted = formatOutput(
+      result,
+      params.response_format,
+      () => formatDataValidationMarkdown(result)
+    );
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: formatted.text,
+        },
+      ],
+      structuredContent: formatted.structuredData,
+    };
+  } catch (error) {
+    console.error("validateImportData error:", error);
+    const errorResponse = createErrorResponse(
+      error instanceof Error ? error.message : String(error)
+    );
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: errorResponse.text,
+        },
+      ],
+    };
+  }
+}
+
+/**
+ * Format data validation result as markdown
+ */
+function formatDataValidationMarkdown(result: DataValidationResult): string {
+  const parts: string[] = [];
+  const { summary } = result;
+
+  parts.push("# Data Validation Report");
+  parts.push("");
+  parts.push(`**Generated:** ${new Date(result.generatedAt).toLocaleString()}`);
+  parts.push("");
+
+  // Summary line
+  const pct = summary.totalSuppliersScanned > 0
+    ? ((summary.suppliersWithIssues / summary.totalSuppliersScanned) * 100).toFixed(1)
+    : "0.0";
+  parts.push(`**Scanned:** ${summary.totalSuppliersScanned} suppliers | **With Issues:** ${summary.suppliersWithIssues} (${pct}%) | **Total Issues:** ${summary.totalIssues}`);
+  parts.push("");
+
+  if (summary.totalIssues === 0) {
+    parts.push("All validated fields appear clean. No garbage data detected.");
+    parts.push("");
+    return parts.join("\n");
+  }
+
+  // Issue breakdown by severity
+  parts.push("## Issues by Severity");
+  parts.push("");
+  if (summary.issuesBySeverity.error > 0) parts.push(`- 🔴 **Error:** ${summary.issuesBySeverity.error}`);
+  if (summary.issuesBySeverity.warning > 0) parts.push(`- 🟡 **Warning:** ${summary.issuesBySeverity.warning}`);
+  if (summary.issuesBySeverity.info > 0) parts.push(`- 🔵 **Info:** ${summary.issuesBySeverity.info}`);
+  parts.push("");
+
+  // Issue breakdown by field
+  const fieldEntries = Object.entries(summary.issuesByField).sort((a, b) => b[1] - a[1]);
+  if (fieldEntries.length > 0) {
+    parts.push("## Issues by Field");
+    parts.push("");
+    parts.push("| Field | Count |");
+    parts.push("|-------|-------|");
+    for (const [field, count] of fieldEntries) {
+      parts.push(`| ${field} | ${count} |`);
+    }
+    parts.push("");
+  }
+
+  // Issue breakdown by rule
+  const ruleEntries = Object.entries(summary.issuesByRule).sort((a, b) => b[1] - a[1]);
+  if (ruleEntries.length > 0) {
+    parts.push("## Most Common Issues");
+    parts.push("");
+    for (const [rule, count] of ruleEntries.slice(0, 10)) {
+      parts.push(`- **${formatRuleName(rule)}:** ${count}`);
+    }
+    parts.push("");
+  }
+
+  // Per-supplier details (limit to top 20)
+  const suppliersToShow = result.suppliers.slice(0, 20);
+  parts.push(`## Suppliers with Issues${result.suppliers.length > 20 ? ` (showing 20 of ${result.suppliers.length})` : ""}`);
+  parts.push("");
+
+  for (let i = 0; i < suppliersToShow.length; i++) {
+    parts.push(formatSupplierValidationMarkdown(suppliersToShow[i], i + 1));
+    parts.push("");
+  }
+
+  if (result.suppliers.length > 20) {
+    parts.push(`... and ${result.suppliers.length - 20} more supplier(s) with issues.`);
+    parts.push("");
+  }
+
+  // Recommendations
+  parts.push("## Recommendations");
+  parts.push("");
+  for (const rec of result.recommendations) {
+    parts.push(`- ${rec}`);
+  }
+  parts.push("");
+
+  return parts.join("\n");
+}
+
+/**
+ * Format a single supplier's validation issues
+ */
+function formatSupplierValidationMarkdown(supplier: SupplierValidationResult, index: number): string {
+  const parts: string[] = [];
+  const severityEmoji = supplier.highestSeverity === "error" ? "🔴" :
+    supplier.highestSeverity === "warning" ? "🟡" : "🔵";
+
+  parts.push(`### ${index}. ${supplier.supplierName || "Unnamed Supplier"} ${severityEmoji}`);
+  parts.push(`**ID:** ${supplier.supplierId} | **Issues:** ${supplier.issueCount}`);
+  parts.push("");
+
+  for (const issue of supplier.issues) {
+    const issueSeverity = issue.severity === "error" ? "🔴" :
+      issue.severity === "warning" ? "🟡" : "🔵";
+    parts.push(`- ${issueSeverity} **${issue.field}** = \`${truncateValue(issue.value)}\` — ${issue.message}. *${issue.suggestion}*`);
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * Format rule ID as human-readable name
+ */
+function formatRuleName(rule: string): string {
+  return rule.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/**
+ * Truncate long values for display
+ */
+function truncateValue(value: string, maxLen = 50): string {
+  if (value.length <= maxLen) return value;
+  return value.substring(0, maxLen - 3) + "...";
+}
+
+/**
+ * List file import batches/jobs
+ */
+export async function listImportBatchesTool(params: ListImportBatchesInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const jobs = await client.listFileImportJobs(params.limit);
+
+    const result = { jobs, count: jobs.length };
+
+    const formatted = formatOutput(
+      result,
+      params.response_format,
+      () => formatImportBatchesMarkdown(jobs)
+    );
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: formatted.text,
+        },
+      ],
+      structuredContent: formatted.structuredData,
+    };
+  } catch (error) {
+    console.error("listImportBatches error:", error);
+    const errorResponse = createErrorResponse(
+      error instanceof Error ? error.message : String(error)
+    );
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: errorResponse.text,
+        },
+      ],
+    };
+  }
+}
+
+/**
+ * Format import batches list as markdown
+ */
+function formatImportBatchesMarkdown(jobs: FileImportJob[]): string {
+  const parts: string[] = [];
+
+  parts.push("# File Import Batches");
+  parts.push("");
+  parts.push(`**Total:** ${jobs.length} import job(s)`);
+  parts.push("");
+
+  if (jobs.length === 0) {
+    parts.push("No import jobs found.");
+    parts.push("");
+    return parts.join("\n");
+  }
+
+  // Summary table
+  parts.push("| # | Filename | Status | Entities | Date |");
+  parts.push("|---|----------|--------|----------|------|");
+
+  for (let i = 0; i < jobs.length; i++) {
+    const job = jobs[i];
+    const statusEmoji = job.status === "COMPLETED" ? "✅" :
+      job.status === "FAILED" ? "❌" :
+      job.status === "PROCESSING" ? "⏳" :
+      job.status === "DISCARDED" ? "🗑️" :
+      job.status === "CANCELLED" ? "🚫" : "⏸️";
+    const date = new Date(job.createdAt).toLocaleDateString();
+    parts.push(`| ${i + 1} | ${job.sourceFilename} | ${statusEmoji} ${job.status} | ${job.createdEntityCount} | ${date} |`);
+  }
+  parts.push("");
+
+  // Detailed view for each job
+  parts.push("## Details");
+  parts.push("");
+
+  for (const job of jobs) {
+    parts.push(`### ${job.sourceFilename}`);
+    parts.push(`**ID:** \`${job.id}\``);
+    parts.push(`**Status:** ${job.status} | **Client:** ${job.clientId} | **Created:** ${new Date(job.createdAt).toLocaleString()}`);
+
+    if (job.createdEntityCount > 0) {
+      parts.push(`**Entities Created:** ${job.createdEntityCount}`);
+    }
+
+    // Entity type breakdown
+    const summaryEntries = Object.entries(job.entityTypeSummaries);
+    if (summaryEntries.length > 0) {
+      parts.push("");
+      parts.push("| Entity Type | Success | Failed |");
+      parts.push("|-------------|---------|--------|");
+      for (const [type, result] of summaryEntries) {
+        parts.push(`| ${type} | ${result.successCount} | ${result.failureCount} |`);
+      }
+    }
+
+    if (job.fileProcessingRecordIds.length > 0) {
+      parts.push(`**Processing Records:** ${job.fileProcessingRecordIds.length}`);
+    }
+
+    parts.push("");
+    parts.push("---");
+    parts.push("");
+  }
 
   return parts.join("\n");
 }

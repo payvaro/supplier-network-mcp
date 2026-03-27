@@ -1,5 +1,5 @@
 import { vi, type Mock } from 'vitest';
-import type { Supplier, Buyer, BuyerLink, AggregatorLink, PaginatedResponse } from '../types.js';
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, PaginatedResponse } from '../types.js';
 
 export interface MockNetworkAPIClient {
   listSuppliers: Mock<(pageSize?: number, cursor?: string) => Promise<PaginatedResponse<Supplier>>>;
@@ -23,6 +23,8 @@ export interface MockNetworkAPIClient {
   createBuyerLink: Mock<(link: Partial<BuyerLink>) => Promise<BuyerLink>>;
   getBuyerLinksByRefKey: Mock<(buyerRefKey: string) => Promise<BuyerLink[]>>;
   uploadFile: Mock<(filePath: string, fileName?: string) => Promise<unknown>>;
+  listFileImportJobs: Mock<(limit?: number) => Promise<FileImportJob[]>>;
+  getFileImportJob: Mock<(jobId: string) => Promise<FileImportJob>>;
   listAggregatorLinks: Mock<() => Promise<AggregatorLink[]>>;
 }
 
@@ -56,6 +58,8 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
 
     // File operations
     uploadFile: vi.fn(),
+    listFileImportJobs: vi.fn(),
+    getFileImportJob: vi.fn(),
 
     // Aggregator links
     listAggregatorLinks: vi.fn(),

@@ -279,6 +279,29 @@ export const RelationshipAnalysisSchema = z.object({
   response_format: ResponseFormatSchema
 }).strict();
 
+// Data validation schema
+export const DataValidationSchema = z.object({
+  dateRange: z.object({
+    from: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+    to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format")
+  }).optional().describe("Date range of import batch to validate (yyyyMMdd format)"),
+  buyerId: z.string()
+    .optional()
+    .describe("Scope validation to suppliers linked to this buyer"),
+  response_format: ResponseFormatSchema
+}).strict();
+
+// List import batches schema
+export const ListImportBatchesSchema = z.object({
+  limit: z.number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(20)
+    .describe("Maximum number of import jobs to return (1-100, default 20)"),
+  response_format: ResponseFormatSchema,
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -298,6 +321,8 @@ export type SlackNotificationInput = z.infer<typeof SlackNotificationSchema>;
 export type SlackGeneralNotificationInput = z.infer<typeof SlackGeneralNotificationSchema>;
 export type ImportAnalysisInput = z.infer<typeof ImportAnalysisSchema>;
 export type RelationshipAnalysisInput = z.infer<typeof RelationshipAnalysisSchema>;
+export type DataValidationInput = z.infer<typeof DataValidationSchema>;
+export type ListImportBatchesInput = z.infer<typeof ListImportBatchesSchema>;
 
 // Client lookup schema
 export const LookupClientIdSchema = z.object({

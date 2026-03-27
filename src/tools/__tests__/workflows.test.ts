@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { analyzeImport, analyzeRelationships } from '../workflows.js';
+import { analyzeImport, analyzeRelationships, validateImportDataTool, listImportBatchesTool } from '../workflows.js';
 import { createMockNetworkAPIClient, type MockNetworkAPIClient } from '../../__mocks__/api-client.mock.js';
 import {
   createSupplier,
@@ -12,6 +12,7 @@ import {
   createRelationshipMapping,
 } from '../../test-utils/fixtures.js';
 import { ResponseFormat } from '../../constants.js';
+import type { DataValidationResult, FileImportJob } from '../../types.js';
 
 // Mock the api-client module
 vi.mock('../../services/api-client.js', () => ({
@@ -31,9 +32,15 @@ vi.mock('../../services/relationship-analyzer.js', () => ({
   buildRelationshipMap: vi.fn(),
 }));
 
+// Mock the data-validator module
+vi.mock('../../services/data-validator.js', () => ({
+  validateImportData: vi.fn(),
+}));
+
 import { getNetworkAPIClient } from '../../services/api-client.js';
 import { analyzePostUpload, analyzeQuality } from '../../services/import-analyzer.js';
 import { analyzeHealth, analyzeCoverage, buildRelationshipMap } from '../../services/relationship-analyzer.js';
+import { validateImportData as runDataValidation } from '../../services/data-validator.js';
 
 describe('workflow tools', () => {
   let mockClient: MockNetworkAPIClient;
@@ -369,6 +376,247 @@ describe('workflow tools', () => {
       });
 
       expect(result.content[0].text).toContain('Test Corp');
+    });
+  });
+
+  describe('validateImportDataTool', () => {
+    const mockValidationResult: DataValidationResult = {
+      summary: {
+        totalSuppliersScanned: 10,
+        suppliersWithIssues: 3,
+        totalIssues: 5,
+        issuesByField: { email: 3, 'address.streetAddress': 2 },
+        issuesBySeverity: { error: 3, warning: 2, info: 0 },
+        issuesByRule: { email_placeholder: 2, address_name_in_street: 2, email_name_like: 1 },
+      },
+      suppliers: [
+        {
+          supplierId: 's1',
+          supplierName: 'Bad Supplier',
+          issues: [
+            {
+              field: 'email',
+              value: 'N/A',
+              rule: 'email_placeholder',
+              message: 'Placeholder value "N/A" in email field',
+              severity: 'error',
+              suggestion: 'Remove placeholder and collect actual email address',
+            },
+          ],
+          issueCount: 1,
+          highestSeverity: 'error',
+        },
+      ],
+      recommendations: ['2 supplier(s) have placeholder emails.'],
+      generatedAt: new Date().toISOString(),
+    };
+
+    it('calls data validator and returns markdown', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(runDataValidation).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Data Validation Report');
+      expect(result.content[0].text).toContain('Scanned');
+      expect(result.content[0].text).toContain('10 suppliers');
+    });
+
+    it('includes severity breakdown in markdown', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('Issues by Severity');
+      expect(result.content[0].text).toContain('Error');
+    });
+
+    it('includes per-supplier issues in markdown', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('Bad Supplier');
+      expect(result.content[0].text).toContain('N/A');
+    });
+
+    it('includes recommendations in markdown', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('placeholder emails');
+    });
+
+    it('passes dateRange and buyerId to validator', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      await validateImportDataTool({
+        dateRange: { from: '20260301', to: '20260305' },
+        buyerId: 'buyer-123',
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(runDataValidation).toHaveBeenCalledWith(
+        expect.anything(),
+        { from: '20260301', to: '20260305' },
+        'buyer-123'
+      );
+    });
+
+    it('returns JSON format when specified', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue(mockValidationResult);
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.JSON,
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.summary.totalSuppliersScanned).toBe(10);
+      expect(parsed.suppliers).toHaveLength(1);
+    });
+
+    it('shows clean message when no issues found', async () => {
+      vi.mocked(runDataValidation).mockResolvedValue({
+        summary: {
+          totalSuppliersScanned: 5,
+          suppliersWithIssues: 0,
+          totalIssues: 0,
+          issuesByField: {},
+          issuesBySeverity: { error: 0, warning: 0, info: 0 },
+          issuesByRule: {},
+        },
+        suppliers: [],
+        recommendations: ['No data quality issues detected.'],
+        generatedAt: new Date().toISOString(),
+      });
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('No garbage data detected');
+    });
+
+    it('handles validator errors', async () => {
+      vi.mocked(runDataValidation).mockRejectedValue(new Error('Validation failed'));
+
+      const result = await validateImportDataTool({
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Validation failed');
+    });
+  });
+
+  describe('listImportBatchesTool', () => {
+    const mockJobs: FileImportJob[] = [
+      {
+        id: 'job-1',
+        clientId: 'client-001',
+        sourceFilename: 'suppliers-march.csv',
+        status: 'COMPLETED',
+        fileProcessingRecordIds: ['fpr-1'],
+        createdEntityCount: 50,
+        entityTypeSummaries: {
+          SUPPLIER: { successCount: 48, failureCount: 2 },
+        },
+        createdAt: '2026-03-15T10:00:00Z',
+      },
+      {
+        id: 'job-2',
+        clientId: 'client-001',
+        sourceFilename: 'buyers-march.csv',
+        status: 'FAILED',
+        fileProcessingRecordIds: ['fpr-2'],
+        createdEntityCount: 0,
+        entityTypeSummaries: {},
+        createdAt: '2026-03-16T14:30:00Z',
+      },
+    ];
+
+    it('lists import jobs in markdown format', async () => {
+      mockClient.listFileImportJobs.mockResolvedValue(mockJobs);
+
+      const result = await listImportBatchesTool({
+        limit: 20,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(mockClient.listFileImportJobs).toHaveBeenCalledWith(20);
+      expect(result.content[0].text).toContain('File Import Batches');
+      expect(result.content[0].text).toContain('suppliers-march.csv');
+      expect(result.content[0].text).toContain('buyers-march.csv');
+      expect(result.content[0].text).toContain('COMPLETED');
+      expect(result.content[0].text).toContain('FAILED');
+    });
+
+    it('shows entity type breakdown', async () => {
+      mockClient.listFileImportJobs.mockResolvedValue(mockJobs);
+
+      const result = await listImportBatchesTool({
+        limit: 20,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('SUPPLIER');
+      expect(result.content[0].text).toContain('48');
+    });
+
+    it('passes custom limit', async () => {
+      mockClient.listFileImportJobs.mockResolvedValue([]);
+
+      await listImportBatchesTool({
+        limit: 5,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(mockClient.listFileImportJobs).toHaveBeenCalledWith(5);
+    });
+
+    it('returns JSON format when specified', async () => {
+      mockClient.listFileImportJobs.mockResolvedValue(mockJobs);
+
+      const result = await listImportBatchesTool({
+        limit: 20,
+        response_format: ResponseFormat.JSON,
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.jobs).toHaveLength(2);
+      expect(parsed.count).toBe(2);
+    });
+
+    it('handles empty results', async () => {
+      mockClient.listFileImportJobs.mockResolvedValue([]);
+
+      const result = await listImportBatchesTool({
+        limit: 20,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.content[0].text).toContain('No import jobs found');
+    });
+
+    it('handles API errors', async () => {
+      mockClient.listFileImportJobs.mockRejectedValue(new Error('API unavailable'));
+
+      const result = await listImportBatchesTool({
+        limit: 20,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('API unavailable');
     });
   });
 });

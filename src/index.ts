@@ -30,6 +30,8 @@ import {
   ImportAnalysisSchema,
   RelationshipAnalysisSchema,
   LookupClientIdSchema,
+  DataValidationSchema,
+  ListImportBatchesSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -61,6 +63,8 @@ import {
 import {
   analyzeImport,
   analyzeRelationships,
+  validateImportDataTool,
+  listImportBatchesTool,
 } from "./tools/workflows.js";
 
 import { lookupClientId } from "./tools/clients.js";
@@ -744,9 +748,69 @@ function createServer() {
             required: ["name"],
           },
         },
+        {
+          name: "network_validate_import_data",
+          description:
+            "Validate imported supplier data for garbage/invalid content. Detects placeholder emails, names in address fields, invalid phone numbers, cross-field contamination, and other data quality issues. Returns per-supplier issues with remediation suggestions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              dateRange: {
+                type: "object",
+                description: "Date range of import batch to validate (yyyyMMdd format)",
+                properties: {
+                  from: {
+                    type: "string",
+                    description: "Start date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                  to: {
+                    type: "string",
+                    description: "End date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                },
+                required: ["from", "to"],
+              },
+              buyerId: {
+                type: "string",
+                description: "Scope validation to suppliers linked to this buyer",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
+        {
+          name: "network_list_import_batches",
+          description:
+            "List recent file import jobs/batches. Shows filename, status, entity counts, and timestamps for each import. Use this to discover available import batches before running validation with network_validate_import_data.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              limit: {
+                type: "number",
+                description: "Maximum number of import jobs to return (1-100, default 20)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
       ],
     };
-    
+
     // Log raw response
     console.error("=== MCP Response (ListTools) ===");
     console.error(JSON.stringify(response, null, 2));
@@ -878,6 +942,18 @@ function createServer() {
         case "network_lookup_client_id": {
           const params = LookupClientIdSchema.parse(args);
           response = await lookupClientId(params);
+          break;
+        }
+
+        case "network_validate_import_data": {
+          const params = DataValidationSchema.parse(args);
+          response = await validateImportDataTool(params);
+          break;
+        }
+
+        case "network_list_import_batches": {
+          const params = ListImportBatchesSchema.parse(args);
+          response = await listImportBatchesTool(params);
           break;
         }
 
