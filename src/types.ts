@@ -58,6 +58,22 @@ export interface AggregatorLink {
   buyerRefKey?: string;
 }
 
+export interface EntityTypeResult {
+  successCount: number;
+  failureCount: number;
+}
+
+export interface FileImportJob {
+  id: string;
+  clientId: string;
+  sourceFilename: string;
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED" | "DISCARDED";
+  fileProcessingRecordIds: string[];
+  createdEntityCount: number;
+  entityTypeSummaries: Record<string, EntityTypeResult>;
+  createdAt: string;
+}
+
 export interface Supplier {
   id?: string;
   name?: string;
@@ -254,6 +270,42 @@ export interface ImportAnalysisResult {
   generatedAt: string;
 }
 
+// Data validation types
+export type ValidationSeverity = "error" | "warning" | "info";
+
+export interface FieldValidationIssue {
+  field: string;
+  value: string;
+  rule: string;
+  message: string;
+  severity: ValidationSeverity;
+  suggestion: string;
+}
+
+export interface SupplierValidationResult {
+  supplierId: string;
+  supplierName?: string;
+  issues: FieldValidationIssue[];
+  issueCount: number;
+  highestSeverity: ValidationSeverity;
+}
+
+export interface ValidationSummary {
+  totalSuppliersScanned: number;
+  suppliersWithIssues: number;
+  totalIssues: number;
+  issuesByField: Record<string, number>;
+  issuesBySeverity: Record<ValidationSeverity, number>;
+  issuesByRule: Record<string, number>;
+}
+
+export interface DataValidationResult {
+  summary: ValidationSummary;
+  suppliers: SupplierValidationResult[];
+  recommendations: string[];
+  generatedAt: string;
+}
+
 // Relationship analysis types
 export interface HealthIssue {
   type: "stale_link" | "missing_contact" | "inactive_supplier";
@@ -319,6 +371,73 @@ export interface ClientsConfig {
 export interface ClientLookupResult {
   clientId: string;
   name: string;
+}
+
+// Matching job types
+export type MatchingJobStatus = "PENDING" | "RUNNING" | "REVIEW" | "FINALIZING" | "COMPLETED" | "FAILED" | "ABORTED";
+export type MatchCategory = "EXACT_MATCH" | "POSSIBLE_MATCH" | "CONFLICT" | "NET_NEW";
+export type StagedMatchStatus = "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED";
+
+export interface MatchSignal {
+  type: string;
+  score: number;
+  weight: number;
+  incomingValue?: string;
+  matchedValue?: string;
+}
+
+export interface MatchAlternative {
+  supplierId: string;
+  supplierName?: string;
+  confidenceScore: number;
+  signals?: MatchSignal[];
+}
+
+export interface MatchingJob {
+  jobId: string;
+  tenantId?: string;
+  fileName: string;
+  status: MatchingJobStatus;
+  totalRows: number;
+  exactMatches: number;
+  possibleMatches: number;
+  conflicts: number;
+  netNew: number;
+  failed: number;
+  merged: number;
+  created: number;
+  skipped: number;
+  createdAt: string;
+  completedAt?: string;
+  statusMessage?: string;
+}
+
+export interface MatchCandidate {
+  candidateId: string;
+  jobId: string;
+  rowNumber: number;
+  incomingData?: Record<string, unknown>;
+  rawRow?: string;
+  category: MatchCategory;
+  confidenceScore: number;
+  matchedSupplierId?: string;
+  resolution?: string;
+  processedAt?: string;
+}
+
+export interface StagedMatch {
+  stagedMatchId: string;
+  jobId: string;
+  candidate: MatchCandidate;
+  alternatives: MatchAlternative[];
+  status: StagedMatchStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  selectedSupplierId?: string;
+  reviewNote?: string;
+  aiRecommendation?: "MERGE" | "CREATE_NEW" | "REVIEW_MORE";
+  aiConfidence?: number;
+  aiRationale?: string;
 }
 
 // Slack notification types

@@ -30,6 +30,12 @@ import {
   ImportAnalysisSchema,
   RelationshipAnalysisSchema,
   LookupClientIdSchema,
+  DataValidationSchema,
+  ListImportBatchesSchema,
+  ListMatchingJobsSchema,
+  GetMatchingJobSchema,
+  ListMatchCandidatesSchema,
+  ListStagedMatchesSchema,
 } from "./schemas/index.js";
 
 // Import tool implementations
@@ -61,6 +67,12 @@ import {
 import {
   analyzeImport,
   analyzeRelationships,
+  validateImportDataTool,
+  listImportBatchesTool,
+  listMatchingJobsTool,
+  getMatchingJobTool,
+  listMatchCandidatesTool,
+  listStagedMatchesTool,
 } from "./tools/workflows.js";
 
 import { lookupClientId } from "./tools/clients.js";
@@ -744,13 +756,190 @@ function createServer() {
             required: ["name"],
           },
         },
+        {
+          name: "network_validate_import_data",
+          description:
+            "Validate imported supplier data for garbage/invalid content. Detects placeholder emails, names in address fields, invalid phone numbers, cross-field contamination, and other data quality issues. Returns per-supplier issues with remediation suggestions.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              dateRange: {
+                type: "object",
+                description: "Date range of import batch to validate (yyyyMMdd format)",
+                properties: {
+                  from: {
+                    type: "string",
+                    description: "Start date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                  to: {
+                    type: "string",
+                    description: "End date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                },
+                required: ["from", "to"],
+              },
+              buyerId: {
+                type: "string",
+                description: "Scope validation to suppliers linked to this buyer",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
+        {
+          name: "network_list_import_batches",
+          description:
+            "List recent file import jobs/batches. Shows filename, status, entity counts, and timestamps for each import. Use this to discover available import batches before running validation with network_validate_import_data.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              limit: {
+                type: "number",
+                description: "Maximum number of import jobs to return (1-100, default 20)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
+        {
+          name: "network_list_matching_jobs",
+          description:
+            "List supplier matching jobs. Shows file name, status, match category counts, and progress. Use to discover jobs in REVIEW status that need attention.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              status: {
+                type: "string",
+                enum: ["PENDING", "RUNNING", "REVIEW", "FINALIZING", "COMPLETED", "FAILED", "ABORTED"],
+                description: "Filter by job status (optional)",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+          },
+        },
+        {
+          name: "network_get_matching_job",
+          description:
+            "Get detailed status and progress for a specific matching job. Shows match category breakdown, processing progress, and finalization results.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              jobId: {
+                type: "string",
+                description: "Matching job ID",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["jobId"],
+          },
+        },
+        {
+          name: "network_list_match_candidates",
+          description:
+            "List match candidates for a matching job. Each candidate is a row from the import file with its match category (EXACT_MATCH, POSSIBLE_MATCH, CONFLICT, NET_NEW) and confidence score.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              jobId: {
+                type: "string",
+                description: "Matching job ID",
+              },
+              category: {
+                type: "string",
+                enum: ["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"],
+                description: "Filter by match category",
+              },
+              pageSize: {
+                type: "number",
+                description: "Results per page (1-100, default 20)",
+                default: 20,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for next page",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["jobId"],
+          },
+        },
+        {
+          name: "network_list_staged_matches",
+          description:
+            "List staged matches awaiting review for a matching job. Shows match alternatives, AI recommendations, and review status. Filter by review status (PENDING, APPROVED, REJECTED) or match category.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              jobId: {
+                type: "string",
+                description: "Matching job ID",
+              },
+              status: {
+                type: "string",
+                enum: ["PENDING", "APPROVED", "REJECTED", "SKIPPED"],
+                description: "Filter by review status",
+              },
+              category: {
+                type: "string",
+                enum: ["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"],
+                description: "Filter by match category",
+              },
+              pageSize: {
+                type: "number",
+                description: "Results per page (1-100, default 20)",
+                default: 20,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for next page",
+              },
+              response_format: {
+                type: "string",
+                enum: ["markdown", "json"],
+                description: "Output format",
+                default: "markdown",
+              },
+            },
+            required: ["jobId"],
+          },
+        },
       ],
     };
-    
+
     // Log raw response
     console.error("=== MCP Response (ListTools) ===");
     console.error(JSON.stringify(response, null, 2));
-    
+
     return response;
   });
 
@@ -878,6 +1067,42 @@ function createServer() {
         case "network_lookup_client_id": {
           const params = LookupClientIdSchema.parse(args);
           response = await lookupClientId(params);
+          break;
+        }
+
+        case "network_validate_import_data": {
+          const params = DataValidationSchema.parse(args);
+          response = await validateImportDataTool(params);
+          break;
+        }
+
+        case "network_list_import_batches": {
+          const params = ListImportBatchesSchema.parse(args);
+          response = await listImportBatchesTool(params);
+          break;
+        }
+
+        case "network_list_matching_jobs": {
+          const params = ListMatchingJobsSchema.parse(args);
+          response = await listMatchingJobsTool(params);
+          break;
+        }
+
+        case "network_get_matching_job": {
+          const params = GetMatchingJobSchema.parse(args);
+          response = await getMatchingJobTool(params);
+          break;
+        }
+
+        case "network_list_match_candidates": {
+          const params = ListMatchCandidatesSchema.parse(args);
+          response = await listMatchCandidatesTool(params);
+          break;
+        }
+
+        case "network_list_staged_matches": {
+          const params = ListStagedMatchesSchema.parse(args);
+          response = await listStagedMatchesTool(params);
           break;
         }
 
