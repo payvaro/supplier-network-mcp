@@ -373,6 +373,73 @@ export interface ClientLookupResult {
   name: string;
 }
 
+// Matching job types
+export type MatchingJobStatus = "PENDING" | "RUNNING" | "REVIEW" | "FINALIZING" | "COMPLETED" | "FAILED" | "ABORTED";
+export type MatchCategory = "EXACT_MATCH" | "POSSIBLE_MATCH" | "CONFLICT" | "NET_NEW";
+export type StagedMatchStatus = "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED";
+
+export interface MatchSignal {
+  type: string;
+  score: number;
+  weight: number;
+  incomingValue?: string;
+  matchedValue?: string;
+}
+
+export interface MatchAlternative {
+  supplierId: string;
+  supplierName?: string;
+  confidenceScore: number;
+  signals?: MatchSignal[];
+}
+
+export interface MatchingJob {
+  jobId: string;
+  tenantId?: string;
+  fileName: string;
+  status: MatchingJobStatus;
+  totalRows: number;
+  exactMatches: number;
+  possibleMatches: number;
+  conflicts: number;
+  netNew: number;
+  failed: number;
+  merged: number;
+  created: number;
+  skipped: number;
+  createdAt: string;
+  completedAt?: string;
+  statusMessage?: string;
+}
+
+export interface MatchCandidate {
+  candidateId: string;
+  jobId: string;
+  rowNumber: number;
+  incomingData?: Record<string, unknown>;
+  rawRow?: string;
+  category: MatchCategory;
+  confidenceScore: number;
+  matchedSupplierId?: string;
+  resolution?: string;
+  processedAt?: string;
+}
+
+export interface StagedMatch {
+  stagedMatchId: string;
+  jobId: string;
+  candidate: MatchCandidate;
+  alternatives: MatchAlternative[];
+  status: StagedMatchStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  selectedSupplierId?: string;
+  reviewNote?: string;
+  aiRecommendation?: "MERGE" | "CREATE_NEW" | "REVIEW_MORE";
+  aiConfidence?: number;
+  aiRationale?: string;
+}
+
 // Slack notification types
 export type SlackMessageType = 'general' | 'analysis';
 

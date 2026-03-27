@@ -302,6 +302,52 @@ export const ListImportBatchesSchema = z.object({
   response_format: ResponseFormatSchema,
 }).strict();
 
+// Matching job schemas
+export const ListMatchingJobsSchema = z.object({
+  status: z.enum(["PENDING", "RUNNING", "REVIEW", "FINALIZING", "COMPLETED", "FAILED", "ABORTED"])
+    .optional()
+    .describe("Filter by job status"),
+  response_format: ResponseFormatSchema,
+}).strict();
+
+export const GetMatchingJobSchema = z.object({
+  jobId: z.string()
+    .min(1, "Job ID cannot be empty")
+    .describe("Matching job ID"),
+  response_format: ResponseFormatSchema,
+}).strict();
+
+export const ListMatchCandidatesSchema = z.object({
+  jobId: z.string()
+    .min(1, "Job ID cannot be empty")
+    .describe("Matching job ID"),
+  category: z.enum(["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"])
+    .optional()
+    .describe("Filter by match category"),
+  pageSize: z.number().int().min(1).max(100).default(20)
+    .describe("Results per page (1-100, default 20)"),
+  cursor: z.string().optional()
+    .describe("Pagination cursor"),
+  response_format: ResponseFormatSchema,
+}).strict();
+
+export const ListStagedMatchesSchema = z.object({
+  jobId: z.string()
+    .min(1, "Job ID cannot be empty")
+    .describe("Matching job ID"),
+  status: z.enum(["PENDING", "APPROVED", "REJECTED", "SKIPPED"])
+    .optional()
+    .describe("Filter by review status"),
+  category: z.enum(["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"])
+    .optional()
+    .describe("Filter by match category"),
+  pageSize: z.number().int().min(1).max(100).default(20)
+    .describe("Results per page (1-100, default 20)"),
+  cursor: z.string().optional()
+    .describe("Pagination cursor"),
+  response_format: ResponseFormatSchema,
+}).strict();
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -323,6 +369,10 @@ export type ImportAnalysisInput = z.infer<typeof ImportAnalysisSchema>;
 export type RelationshipAnalysisInput = z.infer<typeof RelationshipAnalysisSchema>;
 export type DataValidationInput = z.infer<typeof DataValidationSchema>;
 export type ListImportBatchesInput = z.infer<typeof ListImportBatchesSchema>;
+export type ListMatchingJobsInput = z.infer<typeof ListMatchingJobsSchema>;
+export type GetMatchingJobInput = z.infer<typeof GetMatchingJobSchema>;
+export type ListMatchCandidatesInput = z.infer<typeof ListMatchCandidatesSchema>;
+export type ListStagedMatchesInput = z.infer<typeof ListStagedMatchesSchema>;
 
 // Client lookup schema
 export const LookupClientIdSchema = z.object({

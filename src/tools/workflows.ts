@@ -7,7 +7,11 @@ import {
 } from "../services/relationship-analyzer.js";
 import { validateImportData as runDataValidation } from "../services/data-validator.js";
 import { formatOutput, createErrorResponse, formatAddress } from "../services/formatter.js";
-import type { ImportAnalysisInput, RelationshipAnalysisInput, DataValidationInput, ListImportBatchesInput } from "../schemas/index.js";
+import type {
+  ImportAnalysisInput, RelationshipAnalysisInput, DataValidationInput,
+  ListImportBatchesInput, ListMatchingJobsInput, GetMatchingJobInput,
+  ListMatchCandidatesInput, ListStagedMatchesInput,
+} from "../schemas/index.js";
 import type {
   ImportAnalysisResult,
   RelationshipAnalysisResult,
@@ -15,6 +19,10 @@ import type {
   DataValidationResult,
   SupplierValidationResult,
   FileImportJob,
+  MatchingJob,
+  MatchCandidate,
+  StagedMatch,
+  PaginatedResponse,
 } from "../types.js";
 
 /**
@@ -625,6 +633,247 @@ function formatImportBatchesMarkdown(jobs: FileImportJob[]): string {
 
     if (job.fileProcessingRecordIds.length > 0) {
       parts.push(`**Processing Records:** ${job.fileProcessingRecordIds.length}`);
+    }
+
+    parts.push("");
+    parts.push("---");
+    parts.push("");
+  }
+
+  return parts.join("\n");
+}
+
+// --- Matching Job Tools ---
+
+function normalizeToArray<T>(response: T[] | PaginatedResponse<T> | unknown): T[] {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === "object" && "items" in response) {
+    return (response as PaginatedResponse<T>).items;
+  }
+  return [];
+}
+
+/**
+ * List matching jobs
+ */
+export async function listMatchingJobsTool(params: ListMatchingJobsInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const jobs = await client.listMatchingJobs(params.status);
+    const result = { jobs, count: jobs.length };
+
+    const formatted = formatOutput(result, params.response_format, () => formatMatchingJobsMarkdown(jobs));
+    return { content: [{ type: "text" as const, text: formatted.text }], structuredContent: formatted.structuredData };
+  } catch (error) {
+    console.error("listMatchingJobs error:", error);
+    return { isError: true, content: [{ type: "text" as const, text: createErrorResponse(error instanceof Error ? error.message : String(error)).text }] };
+  }
+}
+
+function formatMatchingJobsMarkdown(jobs: MatchingJob[]): string {
+  const parts: string[] = [];
+  parts.push("# Matching Jobs");
+  parts.push("");
+  parts.push(`**Total:** ${jobs.length} job(s)`);
+  parts.push("");
+
+  if (jobs.length === 0) {
+    parts.push("No matching jobs found.");
+    return parts.join("\n");
+  }
+
+  parts.push("| # | File | Status | Rows | Exact | Possible | Conflict | New | Failed | Date |");
+  parts.push("|---|------|--------|------|-------|----------|----------|-----|--------|------|");
+
+  for (let i = 0; i < jobs.length; i++) {
+    const j = jobs[i];
+    const statusEmoji = j.status === "COMPLETED" ? "✅" : j.status === "REVIEW" ? "👀" :
+      j.status === "RUNNING" ? "⏳" : j.status === "FAILED" ? "❌" : j.status === "ABORTED" ? "🚫" : "⏸️";
+    const date = new Date(j.createdAt).toLocaleDateString();
+    parts.push(`| ${i + 1} | ${j.fileName} | ${statusEmoji} ${j.status} | ${j.totalRows} | ${j.exactMatches} | ${j.possibleMatches} | ${j.conflicts} | ${j.netNew} | ${j.failed} | ${date} |`);
+  }
+  parts.push("");
+
+  // Show details for jobs in REVIEW status
+  const reviewJobs = jobs.filter(j => j.status === "REVIEW");
+  if (reviewJobs.length > 0) {
+    parts.push("## Jobs Awaiting Review");
+    parts.push("");
+    for (const j of reviewJobs) {
+      const reviewable = j.possibleMatches + j.conflicts;
+      parts.push(`- **${j.fileName}** (ID: \`${j.jobId}\`) — ${reviewable} match(es) to review`);
+    }
+    parts.push("");
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * Get matching job details
+ */
+export async function getMatchingJobTool(params: GetMatchingJobInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const job = await client.getMatchingJob(params.jobId);
+
+    const formatted = formatOutput(job, params.response_format, () => formatMatchingJobDetailMarkdown(job));
+    return { content: [{ type: "text" as const, text: formatted.text }], structuredContent: formatted.structuredData };
+  } catch (error) {
+    console.error("getMatchingJob error:", error);
+    return { isError: true, content: [{ type: "text" as const, text: createErrorResponse(error instanceof Error ? error.message : String(error)).text }] };
+  }
+}
+
+function formatMatchingJobDetailMarkdown(job: MatchingJob): string {
+  const parts: string[] = [];
+  const statusEmoji = job.status === "COMPLETED" ? "✅" : job.status === "REVIEW" ? "👀" :
+    job.status === "RUNNING" ? "⏳" : job.status === "FAILED" ? "❌" : "⏸️";
+
+  parts.push(`# Matching Job: ${job.fileName}`);
+  parts.push("");
+  parts.push(`**ID:** \`${job.jobId}\``);
+  parts.push(`**Status:** ${statusEmoji} ${job.status}${job.statusMessage ? ` — ${job.statusMessage}` : ""}`);
+  parts.push(`**Created:** ${new Date(job.createdAt).toLocaleString()}`);
+  if (job.completedAt) parts.push(`**Completed:** ${new Date(job.completedAt).toLocaleString()}`);
+  parts.push("");
+
+  // Progress
+  const processed = job.exactMatches + job.possibleMatches + job.conflicts + job.netNew + job.failed;
+  const pct = job.totalRows > 0 ? ((processed / job.totalRows) * 100).toFixed(0) : "0";
+  parts.push("## Matching Results");
+  parts.push("");
+  parts.push(`**Progress:** ${processed} / ${job.totalRows} rows (${pct}%)`);
+  parts.push("");
+  parts.push("| Category | Count | Description |");
+  parts.push("|----------|-------|-------------|");
+  parts.push(`| Exact Match | ${job.exactMatches} | High confidence (≥95%), auto-merge recommended |`);
+  parts.push(`| Possible Match | ${job.possibleMatches} | Medium confidence (70-95%), review needed |`);
+  parts.push(`| Conflict | ${job.conflicts} | Multiple high-confidence matches |`);
+  parts.push(`| Net New | ${job.netNew} | No match found (<70%) |`);
+  parts.push(`| Failed | ${job.failed} | Processing errors |`);
+  parts.push("");
+
+  // Finalization stats (if any)
+  if (job.merged > 0 || job.created > 0 || job.skipped > 0) {
+    parts.push("## Finalization Results");
+    parts.push("");
+    parts.push(`| Action | Count |`);
+    parts.push(`|--------|-------|`);
+    parts.push(`| Merged | ${job.merged} |`);
+    parts.push(`| Created | ${job.created} |`);
+    parts.push(`| Skipped | ${job.skipped} |`);
+    parts.push("");
+  }
+
+  return parts.join("\n");
+}
+
+/**
+ * List match candidates for a job
+ */
+export async function listMatchCandidatesTool(params: ListMatchCandidatesInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const response = await client.listMatchCandidates(params.jobId, params.category, params.pageSize, params.cursor);
+    const candidates = normalizeToArray<MatchCandidate>(response);
+    const result = { candidates, count: candidates.length, jobId: params.jobId };
+
+    const formatted = formatOutput(result, params.response_format, () => formatCandidatesMarkdown(candidates, params.jobId, params.category));
+    return { content: [{ type: "text" as const, text: formatted.text }], structuredContent: formatted.structuredData };
+  } catch (error) {
+    console.error("listMatchCandidates error:", error);
+    return { isError: true, content: [{ type: "text" as const, text: createErrorResponse(error instanceof Error ? error.message : String(error)).text }] };
+  }
+}
+
+function formatCandidatesMarkdown(candidates: MatchCandidate[], jobId: string, category?: string): string {
+  const parts: string[] = [];
+  parts.push(`# Match Candidates`);
+  parts.push("");
+  parts.push(`**Job:** \`${jobId}\`${category ? ` | **Filter:** ${category}` : ""}`);
+  parts.push(`**Showing:** ${candidates.length} candidate(s)`);
+  parts.push("");
+
+  if (candidates.length === 0) {
+    parts.push("No candidates found.");
+    return parts.join("\n");
+  }
+
+  parts.push("| Row | Category | Confidence | Matched Supplier | Resolution |");
+  parts.push("|-----|----------|------------|------------------|------------|");
+
+  for (const c of candidates) {
+    const catEmoji = c.category === "EXACT_MATCH" ? "🎯" : c.category === "POSSIBLE_MATCH" ? "🟡" :
+      c.category === "CONFLICT" ? "⚠️" : "🆕";
+    const conf = (c.confidenceScore * 100).toFixed(0) + "%";
+    parts.push(`| ${c.rowNumber} | ${catEmoji} ${c.category} | ${conf} | ${c.matchedSupplierId || "—"} | ${c.resolution || "—"} |`);
+  }
+  parts.push("");
+
+  return parts.join("\n");
+}
+
+/**
+ * List staged matches for a job
+ */
+export async function listStagedMatchesTool(params: ListStagedMatchesInput) {
+  try {
+    const client = getNetworkAPIClient();
+    const response = await client.listStagedMatches(params.jobId, params.status, params.category, params.pageSize, params.cursor);
+    const matches = normalizeToArray<StagedMatch>(response);
+    const result = { matches, count: matches.length, jobId: params.jobId };
+
+    const formatted = formatOutput(result, params.response_format, () => formatStagedMatchesMarkdown(matches, params.jobId));
+    return { content: [{ type: "text" as const, text: formatted.text }], structuredContent: formatted.structuredData };
+  } catch (error) {
+    console.error("listStagedMatches error:", error);
+    return { isError: true, content: [{ type: "text" as const, text: createErrorResponse(error instanceof Error ? error.message : String(error)).text }] };
+  }
+}
+
+function formatStagedMatchesMarkdown(matches: StagedMatch[], jobId: string): string {
+  const parts: string[] = [];
+  parts.push(`# Staged Matches`);
+  parts.push("");
+  parts.push(`**Job:** \`${jobId}\` | **Showing:** ${matches.length} match(es)`);
+  parts.push("");
+
+  if (matches.length === 0) {
+    parts.push("No staged matches found.");
+    return parts.join("\n");
+  }
+
+  // Summary by status
+  const pending = matches.filter(m => m.status === "PENDING").length;
+  const approved = matches.filter(m => m.status === "APPROVED").length;
+  const rejected = matches.filter(m => m.status === "REJECTED").length;
+  if (pending > 0 || approved > 0 || rejected > 0) {
+    parts.push(`**Pending:** ${pending} | **Approved:** ${approved} | **Rejected:** ${rejected}`);
+    parts.push("");
+  }
+
+  for (const m of matches) {
+    const statusEmoji = m.status === "PENDING" ? "⏳" : m.status === "APPROVED" ? "✅" :
+      m.status === "REJECTED" ? "❌" : "⏭️";
+
+    parts.push(`### ${statusEmoji} Row ${m.candidate.rowNumber} — ${m.candidate.category}`);
+    parts.push(`**ID:** \`${m.stagedMatchId}\` | **Confidence:** ${(m.candidate.confidenceScore * 100).toFixed(0)}% | **Status:** ${m.status}`);
+
+    // Show alternatives
+    if (m.alternatives.length > 0) {
+      parts.push("");
+      parts.push("**Alternatives:**");
+      for (const alt of m.alternatives.slice(0, 5)) {
+        parts.push(`- ${alt.supplierName || alt.supplierId} — ${(alt.confidenceScore * 100).toFixed(0)}%`);
+      }
+    }
+
+    // Show AI recommendation if present
+    if (m.aiRecommendation) {
+      const aiEmoji = m.aiRecommendation === "MERGE" ? "🔀" : m.aiRecommendation === "CREATE_NEW" ? "🆕" : "🔍";
+      parts.push(`**AI:** ${aiEmoji} ${m.aiRecommendation}${m.aiConfidence ? ` (${(m.aiConfidence * 100).toFixed(0)}%)` : ""}`);
+      if (m.aiRationale) parts.push(`> ${m.aiRationale}`);
     }
 
     parts.push("");

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { analyzeImport, analyzeRelationships, validateImportDataTool, listImportBatchesTool } from '../workflows.js';
+import {
+  analyzeImport, analyzeRelationships, validateImportDataTool, listImportBatchesTool,
+  listMatchingJobsTool, getMatchingJobTool, listMatchCandidatesTool, listStagedMatchesTool,
+} from '../workflows.js';
 import { createMockNetworkAPIClient, type MockNetworkAPIClient } from '../../__mocks__/api-client.mock.js';
 import {
   createSupplier,
@@ -12,7 +15,7 @@ import {
   createRelationshipMapping,
 } from '../../test-utils/fixtures.js';
 import { ResponseFormat } from '../../constants.js';
-import type { DataValidationResult, FileImportJob } from '../../types.js';
+import type { DataValidationResult, FileImportJob, MatchingJob, MatchCandidate, StagedMatch } from '../../types.js';
 
 // Mock the api-client module
 vi.mock('../../services/api-client.js', () => ({
@@ -617,6 +620,132 @@ describe('workflow tools', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('API unavailable');
+    });
+  });
+
+  describe('listMatchingJobsTool', () => {
+    const mockJobs: MatchingJob[] = [
+      {
+        jobId: 'MJB#001', tenantId: 't1', fileName: 'suppliers.csv', status: 'REVIEW',
+        totalRows: 100, exactMatches: 60, possibleMatches: 25, conflicts: 5,
+        netNew: 8, failed: 2, merged: 0, created: 0, skipped: 0,
+        createdAt: '2026-03-20T10:00:00Z',
+      },
+      {
+        jobId: 'MJB#002', tenantId: 't1', fileName: 'vendors.csv', status: 'COMPLETED',
+        totalRows: 50, exactMatches: 45, possibleMatches: 3, conflicts: 0,
+        netNew: 2, failed: 0, merged: 43, created: 2, skipped: 2,
+        createdAt: '2026-03-19T08:00:00Z', completedAt: '2026-03-19T09:00:00Z',
+      },
+    ];
+
+    it('lists matching jobs in markdown', async () => {
+      mockClient.listMatchingJobs.mockResolvedValue(mockJobs);
+      const result = await listMatchingJobsTool({ response_format: ResponseFormat.MARKDOWN });
+      expect(result.content[0].text).toContain('Matching Jobs');
+      expect(result.content[0].text).toContain('suppliers.csv');
+      expect(result.content[0].text).toContain('REVIEW');
+    });
+
+    it('passes status filter', async () => {
+      mockClient.listMatchingJobs.mockResolvedValue([]);
+      await listMatchingJobsTool({ status: 'REVIEW', response_format: ResponseFormat.MARKDOWN });
+      expect(mockClient.listMatchingJobs).toHaveBeenCalledWith('REVIEW');
+    });
+
+    it('returns JSON format', async () => {
+      mockClient.listMatchingJobs.mockResolvedValue(mockJobs);
+      const result = await listMatchingJobsTool({ response_format: ResponseFormat.JSON });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.jobs).toHaveLength(2);
+    });
+
+    it('handles errors', async () => {
+      mockClient.listMatchingJobs.mockRejectedValue(new Error('fail'));
+      const result = await listMatchingJobsTool({ response_format: ResponseFormat.MARKDOWN });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('getMatchingJobTool', () => {
+    const mockJob: MatchingJob = {
+      jobId: 'MJB#001', tenantId: 't1', fileName: 'suppliers.csv', status: 'REVIEW',
+      totalRows: 100, exactMatches: 60, possibleMatches: 25, conflicts: 5,
+      netNew: 8, failed: 2, merged: 0, created: 0, skipped: 0,
+      createdAt: '2026-03-20T10:00:00Z',
+    };
+
+    it('returns job details in markdown', async () => {
+      mockClient.getMatchingJob.mockResolvedValue(mockJob);
+      const result = await getMatchingJobTool({ jobId: 'MJB#001', response_format: ResponseFormat.MARKDOWN });
+      expect(result.content[0].text).toContain('suppliers.csv');
+      expect(result.content[0].text).toContain('Exact Match');
+      expect(result.content[0].text).toContain('60');
+    });
+
+    it('handles errors', async () => {
+      mockClient.getMatchingJob.mockRejectedValue(new Error('not found'));
+      const result = await getMatchingJobTool({ jobId: 'bad', response_format: ResponseFormat.MARKDOWN });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('listMatchCandidatesTool', () => {
+    const mockCandidates: MatchCandidate[] = [
+      { candidateId: 'c1', jobId: 'MJB#001', rowNumber: 1, category: 'EXACT_MATCH', confidenceScore: 0.98, matchedSupplierId: 's1' },
+      { candidateId: 'c2', jobId: 'MJB#001', rowNumber: 2, category: 'POSSIBLE_MATCH', confidenceScore: 0.82 },
+    ];
+
+    it('lists candidates in markdown', async () => {
+      mockClient.listMatchCandidates.mockResolvedValue(mockCandidates);
+      const result = await listMatchCandidatesTool({ jobId: 'MJB#001', pageSize: 20, response_format: ResponseFormat.MARKDOWN });
+      expect(result.content[0].text).toContain('Match Candidates');
+      expect(result.content[0].text).toContain('EXACT_MATCH');
+      expect(result.content[0].text).toContain('98%');
+    });
+
+    it('passes category filter', async () => {
+      mockClient.listMatchCandidates.mockResolvedValue([]);
+      await listMatchCandidatesTool({ jobId: 'MJB#001', category: 'CONFLICT', pageSize: 20, response_format: ResponseFormat.MARKDOWN });
+      expect(mockClient.listMatchCandidates).toHaveBeenCalledWith('MJB#001', 'CONFLICT', 20, undefined);
+    });
+
+    it('handles errors', async () => {
+      mockClient.listMatchCandidates.mockRejectedValue(new Error('fail'));
+      const result = await listMatchCandidatesTool({ jobId: 'bad', pageSize: 20, response_format: ResponseFormat.MARKDOWN });
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('listStagedMatchesTool', () => {
+    const mockMatches: StagedMatch[] = [
+      {
+        stagedMatchId: 'sm1', jobId: 'MJB#001', status: 'PENDING',
+        candidate: { candidateId: 'c1', jobId: 'MJB#001', rowNumber: 5, category: 'POSSIBLE_MATCH', confidenceScore: 0.85 },
+        alternatives: [{ supplierId: 's1', supplierName: 'Acme Corp', confidenceScore: 0.85 }],
+        aiRecommendation: 'MERGE', aiConfidence: 0.9, aiRationale: 'Strong name and address match',
+      },
+    ];
+
+    it('lists staged matches in markdown', async () => {
+      mockClient.listStagedMatches.mockResolvedValue(mockMatches);
+      const result = await listStagedMatchesTool({ jobId: 'MJB#001', pageSize: 20, response_format: ResponseFormat.MARKDOWN });
+      expect(result.content[0].text).toContain('Staged Matches');
+      expect(result.content[0].text).toContain('Acme Corp');
+      expect(result.content[0].text).toContain('MERGE');
+    });
+
+    it('returns JSON format', async () => {
+      mockClient.listStagedMatches.mockResolvedValue(mockMatches);
+      const result = await listStagedMatchesTool({ jobId: 'MJB#001', pageSize: 20, response_format: ResponseFormat.JSON });
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.matches).toHaveLength(1);
+    });
+
+    it('handles errors', async () => {
+      mockClient.listStagedMatches.mockRejectedValue(new Error('fail'));
+      const result = await listStagedMatchesTool({ jobId: 'bad', pageSize: 20, response_format: ResponseFormat.MARKDOWN });
+      expect(result.isError).toBe(true);
     });
   });
 });
