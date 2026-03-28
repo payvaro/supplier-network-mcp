@@ -2,9 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   analyzeNetworkConnections,
   notifySlack,
+  handleAnalyze,
+  handleNotifySlack,
 } from '../analysis.js';
 import { createMockNetworkAPIClient, type MockNetworkAPIClient } from '../../__mocks__/api-client.mock.js';
-import { createNetworkAnalysisResult } from '../../test-utils/fixtures.js';
+import {
+  createNetworkAnalysisResult,
+  createImportAnalysisResult,
+  createRelationshipAnalysisResult,
+  createRelationshipHealth,
+} from '../../test-utils/fixtures.js';
 import { ResponseFormat } from '../../constants.js';
 
 // Mock the api-client module
@@ -20,12 +27,31 @@ vi.mock('../../services/network-analyzer.js', () => ({
 // Mock the slack-notifier module
 vi.mock('../../services/slack-notifier.js', () => ({
   postToSlack: vi.fn(),
+  postGeneralMessage: vi.fn(),
   normalizeAnalysisResult: vi.fn((result) => result),
+}));
+
+// Mock service modules used by workflows (imported transitively via handleAnalyze)
+vi.mock('../../services/import-analyzer.js', () => ({
+  analyzePostUpload: vi.fn(),
+  analyzeQuality: vi.fn(),
+}));
+
+vi.mock('../../services/relationship-analyzer.js', () => ({
+  analyzeHealth: vi.fn(),
+  analyzeCoverage: vi.fn(),
+  buildRelationshipMap: vi.fn(),
+}));
+
+vi.mock('../../services/data-validator.js', () => ({
+  validateImportData: vi.fn(),
 }));
 
 import { getNetworkAPIClient } from '../../services/api-client.js';
 import { analyzeNetwork } from '../../services/network-analyzer.js';
-import { postToSlack, normalizeAnalysisResult } from '../../services/slack-notifier.js';
+import { postToSlack, postGeneralMessage, normalizeAnalysisResult } from '../../services/slack-notifier.js';
+import { analyzeHealth } from '../../services/relationship-analyzer.js';
+import { analyzePostUpload } from '../../services/import-analyzer.js';
 
 describe('analysis tools', () => {
   let mockClient: MockNetworkAPIClient;
@@ -313,6 +339,116 @@ describe('analysis tools', () => {
       });
 
       expect(normalizeAnalysisResult).toHaveBeenCalledWith(analysisResult);
+    });
+  });
+
+  describe('handleAnalyze', () => {
+    it('dispatches connections action', async () => {
+      const analysisResult = createNetworkAnalysisResult();
+      vi.mocked(analyzeNetwork).mockResolvedValue(analysisResult);
+
+      const result = await handleAnalyze({
+        action: 'connections',
+        includeSuggestions: true,
+        minConnectionsForHub: 5,
+        includeInactive: false,
+      });
+
+      expect(analyzeNetwork).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Network Analysis');
+    });
+
+    it('dispatches relationships action', async () => {
+      const relResult = createRelationshipAnalysisResult({
+        analysisType: 'health',
+        health: createRelationshipHealth(),
+      });
+      vi.mocked(analyzeHealth).mockResolvedValue(relResult as any);
+
+      const result = await handleAnalyze({
+        action: 'relationships',
+        analysisType: 'health',
+        includeSuggestions: true,
+        minConnectionsForHub: 5,
+        includeInactive: false,
+      });
+
+      expect(analyzeHealth).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Health');
+    });
+
+    it('dispatches import_quality action', async () => {
+      const importResult = createImportAnalysisResult({ mode: 'post-upload' });
+      vi.mocked(analyzePostUpload).mockResolvedValue(importResult);
+
+      const result = await handleAnalyze({
+        action: 'import_quality',
+        mode: 'post-upload',
+        includeSuggestions: true,
+        minConnectionsForHub: 5,
+        includeInactive: false,
+      });
+
+      expect(analyzePostUpload).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Analysis');
+    });
+
+    it('wraps errors with createActionableError', async () => {
+      vi.mocked(analyzeNetwork).mockRejectedValue(new Error('Request failed with status code 500'));
+
+      const result = await handleAnalyze({
+        action: 'connections',
+        includeSuggestions: true,
+        minConnectionsForHub: 5,
+        includeInactive: false,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('❌ Error:');
+    });
+  });
+
+  describe('handleNotifySlack', () => {
+    it('dispatches analysis type', async () => {
+      const analysisResult = createNetworkAnalysisResult();
+
+      const result = await handleNotifySlack({
+        type: 'analysis',
+        webhookUrl: 'https://hooks.slack.com/services/xxx',
+        analysisResult,
+        includeDetails: false,
+      });
+
+      expect(postToSlack).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Successfully posted');
+    });
+
+    it('dispatches custom type', async () => {
+      vi.mocked(postGeneralMessage).mockResolvedValue(undefined);
+
+      const result = await handleNotifySlack({
+        type: 'custom',
+        webhookUrl: 'https://hooks.slack.com/services/xxx',
+        message: { body: 'Hello from the test', title: 'Test' },
+        includeDetails: false,
+      });
+
+      expect(postGeneralMessage).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Slack Message Sent');
+    });
+
+    it('wraps errors with createActionableError', async () => {
+      vi.mocked(postToSlack).mockRejectedValue(new Error('Request failed with status code 400'));
+
+      const result = await handleNotifySlack({
+        type: 'analysis',
+        webhookUrl: 'https://hooks.slack.com/services/xxx',
+        analysisResult: {},
+        includeDetails: false,
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('❌ Error:');
     });
   });
 });

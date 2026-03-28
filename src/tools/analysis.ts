@@ -2,13 +2,17 @@ import { getNetworkAPIClient } from "../services/api-client.js";
 import { analyzeNetwork } from "../services/network-analyzer.js";
 import { postToSlack, postGeneralMessage, normalizeAnalysisResult } from "../services/slack-notifier.js";
 import { formatOutput, createErrorResponse } from "../services/formatter.js";
-import { DEFAULT_SLACK_WEBHOOK_URL } from "../constants.js";
+import { DEFAULT_SLACK_WEBHOOK_URL, ResponseFormat } from "../constants.js";
 import type {
   NetworkAnalysisInput,
   SlackNotificationInput,
   SlackGeneralNotificationInput,
+  AnalyzeToolInput,
+  NotifySlackToolInput,
 } from "../schemas/index.js";
 import type { NetworkAnalysisResult } from "../types.js";
+import { analyzeImport, analyzeRelationships } from "./workflows.js";
+import { createActionableError } from "../errors.js";
 
 /**
  * Analyze network connections
@@ -252,6 +256,85 @@ export async function notifySlack(params: SlackNotificationInput) {
           text: errorResponse.text,
         },
       ],
+    };
+  }
+}
+
+/**
+ * Dispatch wrapper for the consolidated analyze tool
+ */
+export async function handleAnalyze(params: AnalyzeToolInput) {
+  try {
+    switch (params.action) {
+      case "connections":
+        return await analyzeNetworkConnections({
+          includeSuggestions: params.includeSuggestions ?? true,
+          minConnectionsForHub: params.minConnectionsForHub ?? 5,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "relationships":
+        return await analyzeRelationships({
+          buyerId: params.buyerId,
+          analysisType: params.analysisType!,
+          includeInactive: params.includeInactive ?? false,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "import_quality":
+        return await analyzeImport({
+          mode: params.mode!,
+          dateRange: params.dateRange,
+          buyerId: params.buyerId,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      default:
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `❌ Error: Unknown action.` }],
+        };
+    }
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{
+        type: "text" as const,
+        text: createActionableError(error instanceof Error ? error : String(error), 'analyze', params.action, params as Record<string, unknown>).text,
+      }],
+    };
+  }
+}
+
+/**
+ * Dispatch wrapper for the consolidated notify_slack tool
+ */
+export async function handleNotifySlack(params: NotifySlackToolInput) {
+  try {
+    switch (params.type) {
+      case "analysis":
+        return await notifySlack({
+          webhookUrl: params.webhookUrl,
+          analysisResult: params.analysisResult!,
+          includeDetails: params.includeDetails ?? false,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "custom":
+        return await sendSlackMessage({
+          webhookUrl: params.webhookUrl,
+          message: params.message!,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      default:
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `❌ Error: Unknown type.` }],
+        };
+    }
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{
+        type: "text" as const,
+        text: createActionableError(error instanceof Error ? error : String(error), 'notify_slack', params.type, params as Record<string, unknown>).text,
+      }],
     };
   }
 }
