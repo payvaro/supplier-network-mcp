@@ -348,6 +348,190 @@ export const ListStagedMatchesSchema = z.object({
   response_format: ResponseFormatSchema,
 }).strict();
 
+// ========================================
+// Consolidated Tool Schemas (public API)
+// ========================================
+
+export const SearchToolSchema = z.object({
+  name: z.string().optional().describe("Supplier name or partial name to search for"),
+  address: AddressSchema.optional(),
+  email: z.string().email().optional().describe("Supplier email address"),
+  minMatchScore: z.number().min(0).max(1).default(0.4)
+    .describe("Minimum match score threshold (0.0-1.0). Default 0.4. Higher = stricter matching"),
+  maxResults: z.number().int().min(1).max(100).default(10)
+    .describe("Maximum number of results to return (1-100)"),
+}).refine(
+  (data) => data.name || data.address || data.email,
+  { message: "At least one search criterion must be provided (name, address, or email)" }
+);
+
+export const SuppliersToolSchema = z.object({
+  action: z.enum(["list", "get", "history", "by_date"]),
+  id: z.string().min(1).optional(),
+  includeLinks: z.boolean().default(false),
+  date: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format").optional(),
+  format: HistoryFormatSchema.optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+}).refine(
+  (data) => {
+    if ((data.action === 'get' || data.action === 'history') && !data.id) return false;
+    if (data.action === 'by_date' && !data.date) return false;
+    return true;
+  },
+  (data) => {
+    if ((data.action === 'get' || data.action === 'history') && !data.id)
+      return { message: `The '${data.action}' action requires 'id'.` };
+    if (data.action === 'by_date' && !data.date)
+      return { message: "The 'by_date' action requires 'date' in yyyyMMdd format." };
+    return { message: "Validation failed" };
+  }
+);
+
+export const BuyersToolSchema = z.object({
+  action: z.enum(["list", "get", "create"]),
+  id: z.string().min(1).optional(),
+  clientId: z.string().min(1).optional(),
+  name: z.string().optional(),
+  franchiseName: z.string().optional(),
+  storeIdentifier: z.string().optional(),
+  status: z.string().optional(),
+  addresses: z.array(AddressSchema).optional(),
+  contacts: z.array(z.object({
+    name: z.string().optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    position: z.string().optional(),
+    title: z.string().optional(),
+    type: z.enum(["PRIMARY", "SECONDARY", "OTHER"]).optional(),
+  })).optional(),
+}).refine(
+  (data) => {
+    if (data.action === 'get' && !data.id && !data.clientId) return false;
+    if (data.action === 'create' && !data.clientId) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'get') return { message: "The 'get' action requires either 'id' or 'clientId'." };
+    if (data.action === 'create') return { message: "The 'create' action requires 'clientId'." };
+    return { message: "Validation failed" };
+  }
+);
+
+export const RelationshipsToolSchema = z.object({
+  action: z.enum(["for_buyer", "for_supplier", "link"]),
+  buyerId: z.string().min(1).optional(),
+  supplierId: z.string().min(1).optional(),
+  buyerSupplierRefId: z.string().optional(),
+  buyerRefKey: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.action === 'for_buyer' && !data.buyerId) return false;
+    if (data.action === 'for_supplier' && !data.supplierId) return false;
+    if (data.action === 'link' && (!data.buyerId || !data.supplierId)) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'for_buyer') return { message: "The 'for_buyer' action requires 'buyerId'." };
+    if (data.action === 'for_supplier') return { message: "The 'for_supplier' action requires 'supplierId'." };
+    if (data.action === 'link') return { message: "The 'link' action requires both 'buyerId' and 'supplierId'." };
+    return { message: "Validation failed" };
+  }
+);
+
+export const ImportsToolSchema = z.object({
+  action: z.enum(["upload", "batches", "validate"]),
+  filePath: z.string().min(1).optional(),
+  fileName: z.string().optional(),
+  limit: z.number().int().min(1).max(100).default(20),
+  dateRange: z.object({
+    from: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+    to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+  }).optional(),
+  buyerId: z.string().optional(),
+}).refine(
+  (data) => {
+    if (data.action === 'upload' && !data.filePath) return false;
+    return true;
+  },
+  { message: "The 'upload' action requires 'filePath'." }
+);
+
+export const MatchingToolSchema = z.object({
+  action: z.enum(["jobs", "job_detail", "candidates", "staged"]),
+  jobId: z.string().min(1).optional(),
+  status: z.string().optional(),
+  category: z.enum(["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"]).optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+}).refine(
+  (data) => {
+    if (['job_detail', 'candidates', 'staged'].includes(data.action) && !data.jobId) return false;
+    return true;
+  },
+  (data) => ({
+    message: `The '${data.action}' action requires 'jobId'. Use matching with action 'jobs' to list available jobs.`,
+  })
+);
+
+export const AnalyzeToolSchema = z.object({
+  action: z.enum(["connections", "relationships", "import_quality"]),
+  includeSuggestions: z.boolean().default(true),
+  minConnectionsForHub: z.number().int().min(1).default(5),
+  analysisType: z.enum(["health", "coverage", "mapping"]).optional(),
+  includeInactive: z.boolean().default(false),
+  mode: z.enum(["post-upload", "preview", "quality"]).optional(),
+  buyerId: z.string().optional(),
+  dateRange: z.object({
+    from: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+    to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
+  }).optional(),
+}).refine(
+  (data) => {
+    if (data.action === 'relationships' && !data.analysisType) return false;
+    if (data.action === 'import_quality' && !data.mode) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'relationships') return { message: "The 'relationships' action requires 'analysisType'." };
+    if (data.action === 'import_quality') return { message: "The 'import_quality' action requires 'mode'." };
+    return { message: "Validation failed" };
+  }
+);
+
+export const NotifySlackToolSchema = z.object({
+  type: z.enum(["analysis", "custom"]),
+  webhookUrl: z.string().url().optional(),
+  analysisResult: z.union([
+    z.record(z.unknown()),
+    z.string(),
+    z.object({ structuredContent: z.record(z.unknown()) }),
+  ]).optional(),
+  includeDetails: z.boolean().default(false),
+  message: SlackGeneralMessageSchema.optional(),
+}).refine(
+  (data) => {
+    if (data.type === 'analysis' && !data.analysisResult) return false;
+    if (data.type === 'custom' && !data.message) return false;
+    return true;
+  },
+  (data) => {
+    if (data.type === 'analysis') return { message: "The 'analysis' type requires 'analysisResult'." };
+    if (data.type === 'custom') return { message: "The 'custom' type requires a 'message' object." };
+    return { message: "Validation failed" };
+  }
+);
+
+// Consolidated type exports
+export type SearchToolInput = z.infer<typeof SearchToolSchema>;
+export type SuppliersToolInput = z.infer<typeof SuppliersToolSchema>;
+export type BuyersToolInput = z.infer<typeof BuyersToolSchema>;
+export type RelationshipsToolInput = z.infer<typeof RelationshipsToolSchema>;
+export type ImportsToolInput = z.infer<typeof ImportsToolSchema>;
+export type MatchingToolInput = z.infer<typeof MatchingToolSchema>;
+export type AnalyzeToolInput = z.infer<typeof AnalyzeToolSchema>;
+export type NotifySlackToolInput = z.infer<typeof NotifySlackToolSchema>;
+
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
 export type ListSuppliersInput = z.infer<typeof ListSuppliersSchema>;
@@ -385,3 +569,6 @@ export const LookupClientIdSchema = z.object({
 }).strict();
 
 export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;
+
+export const LookupClientToolSchema = LookupClientIdSchema;
+export type LookupClientToolInput = z.infer<typeof LookupClientToolSchema>;
