@@ -76,13 +76,11 @@ npm run start:http
 
 ## Available Tools
 
-All tools follow the naming convention `network_<action>_<subject>`. Every tool accepts an optional `response_format` parameter (`"markdown"` or `"json"`, defaults to `"markdown"`).
+9 consolidated tools provide all supplier, buyer, relationship, analysis, import, and notification capabilities. Every tool accepts an optional `response_format` parameter (`"markdown"` or `"json"`, defaults to `"markdown"`).
 
 ---
 
-### Supplier Tools
-
-#### network_search_suppliers
+### `search` — Supplier Search with Fuzzy Matching
 
 Intelligently search for suppliers with fuzzy matching. The primary tool for finding duplicates, matching external data, and dealing with imperfect data.
 
@@ -109,70 +107,64 @@ Intelligently search for suppliers with fuzzy matching. The primary tool for fin
 }
 ```
 
-#### network_list_suppliers
+---
 
-List all suppliers in the network.
+### `suppliers` — Supplier Management
 
+View supplier information with multiple actions.
+
+**Actions:**
+- `list` - List all suppliers
+- `get` - Get detailed supplier info
+- `history` - Get version history with changes
+- `by_date` - Get suppliers updated on a specific date
+
+**Parameters by action:**
+
+**list** (no required parameters):
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `includeLinks` | boolean | no | Include buyer link data (default false) |
 
-#### network_get_supplier
-
-Get detailed information about a specific supplier.
-
+**get**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | **yes** | Supplier ID |
 | `includeLinks` | boolean | no | Include buyer link data |
 
-#### network_get_suppliers_by_date
-
-Get suppliers updated on a specific date.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `date` | string | **yes** | Date in `yyyyMMdd` format |
-
-#### network_get_supplier_history
-
-Get version history showing all changes to a supplier.
-
+**history**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | **yes** | Supplier ID |
 | `format` | string | no | `"compact"` or `"timeline"` |
 
+**by_date**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `date` | string | **yes** | Date in `yyyyMMdd` format |
+
 ---
 
-### Buyer Tools
+### `buyers` — Buyer Management
 
-#### network_list_buyers
+View and create buyers.
 
-List all buyers in the network.
+**Actions:**
+- `list` - List all buyers
+- `get` - Get detailed buyer info
+- `create` - Create a new buyer
 
-_(No required parameters.)_
+**Parameters by action:**
 
-#### network_get_buyer
+**list** (no required parameters):
+_(No parameters.)_
 
-Get detailed information about a specific buyer.
-
+**get**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | **yes** | Buyer ID |
 
-#### network_get_buyer_by_client_id
-
-Look up a buyer by external client ID.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `clientId` | string | **yes** | External client reference identifier |
-
-#### network_create_buyer
-
-Create a new buyer in the network.
-
+**create**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `clientId` | string | **yes** | External client reference identifier |
@@ -183,39 +175,30 @@ Create a new buyer in the network.
 | `addresses` | array | no | Address objects (`streetAddress`, `city`, `stateProvince`, `postalCode`, `suiteUnit`, `addressType`) |
 | `contacts` | array | no | Contact objects (`name`, `email`, `phone`, `position`, `title`, `type`: PRIMARY/SECONDARY/OTHER) |
 
-#### network_lookup_client_id
-
-Look up a client ID by human-friendly name. Fuzzy matches against client names from the configuration store and returns the matched name and UUID.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | **yes** | Human-friendly client name (e.g. "Comet Electric") |
-| `environment` | string | no | `"dev"` or `"prod"` (default: `"dev"`) |
-
 ---
 
-### Relationship Tools
+### `relationships` — Buyer-Supplier Links
 
-#### network_get_suppliers_for_buyer
+Manage and query buyer-supplier relationships.
 
-Get all suppliers linked to a buyer.
+**Actions:**
+- `for_buyer` - Get suppliers linked to a buyer
+- `for_supplier` - Get buyers linked to a supplier
+- `link` - Create a link between buyer and supplier
 
+**Parameters by action:**
+
+**for_buyer**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyerId` | string | **yes** | Buyer ID |
 
-#### network_get_buyers_for_supplier
-
-Get all buyers linked to a supplier.
-
+**for_supplier**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `supplierId` | string | **yes** | Supplier ID |
 
-#### network_create_buyer_link
-
-Create a link between a buyer and supplier. Returns an error if the link already exists.
-
+**link**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `buyerId` | string | **yes** | Buyer ID |
@@ -225,68 +208,123 @@ Create a link between a buyer and supplier. Returns an error if the link already
 
 ---
 
-### Analysis Tools
+### `imports` — File Upload and Import Management
 
-#### network_analyze_connections
+Upload and manage CSV imports.
 
-Analyze the buyer-supplier network to identify isolated nodes, network hubs, connection patterns, and suggest new links.
+**Actions:**
+- `upload` - Upload a CSV file for processing
+- `batches` - List import batches
+- `validate` - Validate import data
 
+**Parameters by action:**
+
+**upload**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `includeSuggestions` | boolean | no | Include connection suggestions (default true) |
-| `minConnectionsForHub` | number | no | Minimum connections to be considered a hub (default 5, min 1) |
+| `filePath` | string | **yes** | Path to the CSV file |
+| `fileName` | string | no | Filename override (defaults to basename of filePath) |
 
-#### network_analyze_import
+**batches**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | number | no | Maximum batches to return (default 10) |
 
-Comprehensive import analysis: post-upload validation, pre-import preview, or data quality assessment. Identifies duplicates, calculates quality metrics, and provides recommendations.
-
+**validate**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `mode` | string | **yes** | `"post-upload"`, `"preview"`, or `"quality"` |
 | `dateRange` | object | no | `{ "from": "yyyyMMdd", "to": "yyyyMMdd" }` |
 | `buyerId` | string | no | Scope analysis to a specific buyer |
 
-#### network_analyze_relationships
+---
 
-Analyze buyer-supplier relationships: health assessment, coverage analysis, or relationship mapping.
+### `matching` — Matching Job Management
 
+Track and manage data matching jobs.
+
+**Actions:**
+- `jobs` - List all matching jobs
+- `job_detail` - Get details of a specific job
+- `candidates` - Get candidates from a matching job
+- `staged` - View staged matches ready for import
+
+**Parameters by action:**
+
+**jobs**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `status` | string | no | Filter by status (e.g., "completed", "pending") |
+| `limit` | number | no | Maximum results (default 10) |
+
+**job_detail**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `jobId` | string | **yes** | Matching job ID |
+
+**candidates**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `jobId` | string | **yes** | Matching job ID |
+| `limit` | number | no | Maximum candidates (default 20) |
+
+**staged**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `buyerId` | string | no | Filter by buyer (optional) |
+
+---
+
+### `analyze` — Network Analysis
+
+Comprehensive network and relationship analysis.
+
+**Actions:**
+- `connections` - Analyze buyer-supplier network topology
+- `relationships` - Analyze relationship health, coverage, or structure
+- `import_quality` - Post-upload validation and data quality assessment
+
+**Parameters by action:**
+
+**connections**:
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `includeSuggestions` | boolean | no | Include connection suggestions (default true) |
+| `minConnectionsForHub` | number | no | Minimum connections to be considered a hub (default 5, min 1) |
+
+**relationships**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `analysisType` | string | **yes** | `"health"` (link status/issues), `"coverage"` (gaps/unlinked suppliers), or `"mapping"` (network structure) |
 | `buyerId` | string | no | Buyer ID to analyze (analyzes all if omitted) |
 | `includeInactive` | boolean | no | Include inactive links (default false) |
 
----
-
-### File Tools
-
-#### network_upload_file
-
-Upload a CSV file to the network API for processing.
-
+**import_quality**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `filePath` | string | **yes** | Path to the CSV file |
-| `fileName` | string | no | Filename override (defaults to basename of filePath) |
+| `dateRange` | object | no | `{ "from": "yyyyMMdd", "to": "yyyyMMdd" }` |
+| `buyerId` | string | no | Scope analysis to a specific buyer |
 
 ---
 
-### Slack Tools
+### `notify_slack` — Slack Notifications
 
-#### network_notify_slack
+Post messages to Slack via webhook.
 
-Post network analysis results to Slack via webhook. Takes the structured result from `network_analyze_connections` and formats it as a Slack message.
+**Types:**
+- `analysis` - Post network analysis results
+- `custom` - Send custom formatted message
 
+**Parameters by type:**
+
+**analysis**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `analysisResult` | object/string | **yes** | Analysis result from `network_analyze_connections` (object or JSON string) |
+| `analysisResult` | object/string | **yes** | Analysis result from `analyze` tool (object or JSON string) |
 | `webhookUrl` | string | no | Slack webhook URL (falls back to `SLACK_WEBHOOK_URL` env var) |
 | `includeDetails` | boolean | no | Include detailed breakdowns (default false) |
 
-#### network_send_slack_message
-
-Send a custom message to Slack with title, body, key-value fields, action buttons, and color indicator.
-
+**custom**:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `message` | object | **yes** | Message content (see below) |
@@ -305,10 +343,24 @@ Send a custom message to Slack with title, body, key-value fields, action button
 
 ---
 
+### `lookup_client` — Client ID Resolution
+
+Resolve client name to UUID for buyer identification.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | **yes** | Human-friendly client name (e.g. "Comet Electric") |
+| `environment` | string | no | `"dev"` or `"prod"` (default: `"dev"`) |
+
+Returns the matched client name and UUID from the configuration store.
+
+---
+
 ## Common Use Cases
 
 ### Finding Duplicate Suppliers
 
+Use the `search` tool:
 ```json
 {
   "name": "Acme Corp",
@@ -336,12 +388,12 @@ When importing data from another system:
 
 ### Audit Trail
 
-See what changed on a specific date:
+See what changed on a specific date using the `suppliers` tool with `by_date` action:
 ```json
 { "date": "20251210" }
 ```
 
-Then get detailed history:
+Then get detailed history using `suppliers` tool with `history` action:
 ```json
 { "id": "supplier-id-from-above", "format": "timeline" }
 ```
@@ -349,12 +401,12 @@ Then get detailed history:
 ### Network Health Check
 
 Run a full connection analysis and post results to Slack:
-1. Call `network_analyze_connections` with `{ "includeSuggestions": true }`
-2. Pass the result to `network_notify_slack` with `{ "includeDetails": true }`
+1. Call `analyze` tool with `connections` action: `{ "includeSuggestions": true }`
+2. Pass the result to `notify_slack` tool with `analysis` type and `{ "includeDetails": true }`
 
 ### Post-Import Validation
 
-After uploading a CSV file, verify what was imported:
+After uploading a CSV file, verify what was imported using `imports` tool with `validate` action:
 ```json
 {
   "mode": "post-upload",
@@ -365,7 +417,7 @@ After uploading a CSV file, verify what was imported:
 
 ### Client ID Lookup
 
-When you know a client name but need their UUID:
+When you know a client name but need their UUID, use the `lookup_client` tool:
 ```json
 { "name": "Comet Electric", "environment": "dev" }
 ```
