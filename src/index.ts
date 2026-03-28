@@ -9,76 +9,33 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
 
-// Import schemas
+// Import consolidated schemas
 import {
-  SupplierSearchSchema,
-  ListSuppliersSchema,
-  GetSupplierSchema,
-  GetSuppliersByDateSchema,
-  GetSupplierHistorySchema,
-  ListBuyersSchema,
-  GetBuyerSchema,
-  GetBuyerByClientIdSchema,
-  GetSuppliersForBuyerSchema,
-  GetBuyersForSupplierSchema,
-  CreateBuyerLinkSchema,
-  CreateBuyerSchema,
-  UploadFileSchema,
-  NetworkAnalysisSchema,
-  SlackNotificationSchema,
-  SlackGeneralNotificationSchema,
-  ImportAnalysisSchema,
-  RelationshipAnalysisSchema,
-  LookupClientIdSchema,
-  DataValidationSchema,
-  ListImportBatchesSchema,
-  ListMatchingJobsSchema,
-  GetMatchingJobSchema,
-  ListMatchCandidatesSchema,
-  ListStagedMatchesSchema,
+  SearchToolSchema,
+  SuppliersToolSchema,
+  BuyersToolSchema,
+  RelationshipsToolSchema,
+  ImportsToolSchema,
+  MatchingToolSchema,
+  AnalyzeToolSchema,
+  NotifySlackToolSchema,
+  LookupClientToolSchema,
 } from "./schemas/index.js";
 
-// Import tool implementations
-import {
-  searchSuppliers,
-  listSuppliers,
-  getSupplier,
-  getSuppliersByDate,
-  getSupplierHistory,
-  uploadFile,
-} from "./tools/suppliers.js";
-
-import {
-  listBuyers,
-  getBuyer,
-  getBuyerByClientId,
-  getSuppliersForBuyer,
-  getBuyersForSupplier,
-  createBuyerLink,
-  createBuyer,
-} from "./tools/buyers.js";
-
-import {
-  analyzeNetworkConnections,
-  notifySlack,
-  sendSlackMessage,
-} from "./tools/analysis.js";
-
-import {
-  analyzeImport,
-  analyzeRelationships,
-  validateImportDataTool,
-  listImportBatchesTool,
-  listMatchingJobsTool,
-  getMatchingJobTool,
-  listMatchCandidatesTool,
-  listStagedMatchesTool,
-} from "./tools/workflows.js";
-
+// Import tool handlers
+import { searchSuppliers } from "./tools/suppliers.js";
+import { handleSuppliers } from "./tools/suppliers.js";
+import { handleBuyers } from "./tools/buyers.js";
+import { handleRelationships } from "./tools/relationships.js";
+import { handleImports } from "./tools/imports.js";
+import { handleMatching } from "./tools/matching.js";
+import { handleAnalyze, handleNotifySlack } from "./tools/analysis.js";
 import { lookupClientId } from "./tools/clients.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
+
+import { ResponseFormat } from "./constants.js";
 
 /**
  * Create and configure the MCP server
@@ -104,13 +61,13 @@ function createServer() {
     // Log raw request
     console.error("=== MCP Request (ListTools) ===");
     console.error(JSON.stringify(request, null, 2));
-    
+
     const response = {
       tools: [
         {
-          name: "network_search_suppliers",
+          name: "search",
           description:
-            "Intelligently search for suppliers using fuzzy matching. Match by name, address, email, or combination. Returns ranked results with confidence scores (exact, high, medium, low). Perfect for finding duplicates or matching imperfect data.",
+            "Find suppliers by name, address, or email using fuzzy matching. Returns ranked results with confidence scores. Use when the user asks to find, look up, or search for a supplier — especially with partial or imperfect information. Do NOT use for browsing all suppliers — use `suppliers` with action `list` instead.\n\nExample: search for \"Acme\" to find all suppliers with similar names.",
           inputSchema: {
             type: "object",
             properties: {
@@ -122,14 +79,8 @@ function createServer() {
                 type: "object",
                 description: "Address components for searching",
                 properties: {
-                  streetAddress: {
-                    type: "string",
-                    description: "Street address",
-                  },
-                  city: {
-                    type: "string",
-                    description: "City name",
-                  },
+                  streetAddress: { type: "string", description: "Street address" },
+                  city: { type: "string", description: "City name" },
                   stateProvince: {
                     type: "string",
                     description: "State or province (e.g., 'CA', 'NY')",
@@ -138,10 +89,7 @@ function createServer() {
                     type: "string",
                     description: "Postal/ZIP code (e.g., '90210')",
                   },
-                  suiteUnit: {
-                    type: "string",
-                    description: "Suite or unit number",
-                  },
+                  suiteUnit: { type: "string", description: "Suite or unit number" },
                   addressType: {
                     type: "string",
                     description: "Address type (e.g., 'Business')",
@@ -167,21 +115,41 @@ function createServer() {
                 minimum: 1,
                 maximum: 100,
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format: 'markdown' or 'json'",
-                default: "markdown",
-              },
             },
           },
         },
         {
-          name: "network_list_suppliers",
-          description: "List suppliers for the authenticated client with pagination support.",
+          name: "suppliers",
+          description:
+            "View supplier information. Use when the user asks about a specific supplier, wants to browse suppliers, check what changed on a date, or see a supplier's edit history.\n\nActions:\n- `list` — Browse all suppliers with pagination\n- `get` — Get a supplier by ID (set `includeLinks: true` to see buyer relationships)\n- `history` — See all changes to a supplier over time\n- `by_date` — Find suppliers updated on a specific date",
           inputSchema: {
             type: "object",
             properties: {
+              action: {
+                type: "string",
+                enum: ["list", "get", "history", "by_date"],
+                description: "The action to perform",
+              },
+              id: {
+                type: "string",
+                description: "Supplier ID (required for get, history)",
+              },
+              includeLinks: {
+                type: "boolean",
+                description: "Include buyer and aggregator relationship links",
+                default: false,
+              },
+              date: {
+                type: "string",
+                description: "Date in yyyyMMdd format (required for by_date)",
+                pattern: "^\\d{8}$",
+              },
+              format: {
+                type: "string",
+                enum: ["timeline", "compact", "default"],
+                description: "History format",
+                default: "compact",
+              },
               pageSize: {
                 type: "number",
                 description: "Number of suppliers to return per page (1-100)",
@@ -193,244 +161,49 @@ function createServer() {
                 type: "string",
                 description: "Pagination cursor for fetching the next page of results",
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
             },
+            required: ["action"],
           },
         },
         {
-          name: "network_get_supplier",
-          description: "Get detailed information about a specific supplier by ID.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              id: {
-                type: "string",
-                description: "Unique supplier identifier",
-              },
-              includeLinks: {
-                type: "boolean",
-                description: "Include buyer and aggregator relationship links",
-                default: false,
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["id"],
-          },
-        },
-        {
-          name: "network_get_suppliers_by_date",
-          description: "Get suppliers updated on a specific date.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              date: {
-                type: "string",
-                description: "Date in yyyyMMdd format (e.g., 20251119)",
-                pattern: "^\\d{8}$",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["date"],
-          },
-        },
-        {
-          name: "network_get_supplier_history",
+          name: "buyers",
           description:
-            "Get version history showing all changes to a supplier over time.",
+            "View or create buyers. Use when the user asks about a specific buyer, wants to see all buyers, or needs to create a new one. Supports lookup by internal ID or external client ID.\n\nActions:\n- `list` — Browse all buyers\n- `get` — Get a buyer by ID or client ID (provide `id` for internal UUID, or `clientId` for external reference)\n- `create` — Create a new buyer (requires `clientId`)",
           inputSchema: {
             type: "object",
             properties: {
+              action: {
+                type: "string",
+                enum: ["list", "get", "create"],
+                description: "The action to perform",
+              },
               id: {
                 type: "string",
-                description: "Supplier ID to get version history for",
+                description: "Internal buyer UUID (for get)",
               },
-              format: {
-                type: "string",
-                enum: ["timeline", "compact", "default"],
-                description: "History format",
-                default: "compact",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["id"],
-          },
-        },
-        {
-          name: "network_list_buyers",
-          description: "List all buyers in the network.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
-          name: "network_get_buyer",
-          description: "Get detailed information about a specific buyer by ID.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              id: {
-                type: "string",
-                description: "Unique buyer identifier",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["id"],
-          },
-        },
-        {
-          name: "network_get_buyer_by_client_id",
-          description: "Look up a buyer by external client ID.",
-          inputSchema: {
-            type: "object",
-            properties: {
               clientId: {
                 type: "string",
-                description: "External client reference identifier",
+                description: "External client reference identifier (for get or create)",
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["clientId"],
-          },
-        },
-        {
-          name: "network_get_suppliers_for_buyer",
-          description: "Get all suppliers linked to a specific buyer.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              buyerId: {
-                type: "string",
-                description: "Buyer ID to get linked suppliers for",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["buyerId"],
-          },
-        },
-        {
-          name: "network_get_buyers_for_supplier",
-          description: "Get all buyers linked to a specific supplier.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              supplierId: {
-                type: "string",
-                description: "Supplier ID to get linked buyers for",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["supplierId"],
-          },
-        },
-        {
-          name: "network_create_buyer_link",
-          description: "Create a link between a buyer and supplier. Returns an error if the link already exists.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              buyerId: {
-                type: "string",
-                description: "Unique buyer identifier",
-              },
-              supplierId: {
-                type: "string",
-                description: "Unique supplier identifier",
-              },
-              buyerSupplierRefId: {
-                type: "string",
-                description: "External reference ID for the buyer-supplier relationship",
-              },
-              buyerRefKey: {
-                type: "string",
-                description: "Reference key for the buyer-supplier relationship",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["buyerId", "supplierId"],
-          },
-        },
-        {
-          name: "network_create_buyer",
-          description: "Create a new buyer in the network.",
-          inputSchema: {
-            type: "object",
-            properties: {
               name: {
                 type: "string",
-                description: "Buyer name",
+                description: "Buyer name (for create)",
               },
               franchiseName: {
                 type: "string",
-                description: "Franchise name",
+                description: "Franchise name (for create)",
               },
               storeIdentifier: {
                 type: "string",
-                description: "Store identifier",
-              },
-              clientId: {
-                type: "string",
-                description: "External client reference identifier",
+                description: "Store identifier (for create)",
               },
               status: {
                 type: "string",
-                description: "Buyer status",
+                description: "Buyer status (for create)",
               },
               addresses: {
                 type: "array",
-                description: "Buyer addresses",
+                description: "Buyer addresses (for create)",
                 items: {
                   type: "object",
                   properties: {
@@ -445,7 +218,7 @@ function createServer() {
               },
               contacts: {
                 type: "array",
-                description: "Buyer contacts",
+                description: "Buyer contacts (for create)",
                 items: {
                   type: "object",
                   properties: {
@@ -461,214 +234,191 @@ function createServer() {
                   },
                 },
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
             },
-            required: ["clientId"],
+            required: ["action"],
           },
         },
         {
-          name: "network_upload_file",
-          description: "Upload a CSV file to the network API for processing.",
+          name: "relationships",
+          description:
+            "View or create buyer-supplier relationships. Use when the user asks who a buyer's suppliers are, which buyers a supplier serves, or wants to link a buyer and supplier together.\n\nActions:\n- `for_buyer` — Get all suppliers linked to a buyer\n- `for_supplier` — Get all buyers linked to a supplier\n- `link` — Create a new buyer-supplier link (returns error if link already exists)",
           inputSchema: {
             type: "object",
             properties: {
+              action: {
+                type: "string",
+                enum: ["for_buyer", "for_supplier", "link"],
+                description: "The action to perform",
+              },
+              buyerId: {
+                type: "string",
+                description: "Buyer ID (required for for_buyer and link)",
+              },
+              supplierId: {
+                type: "string",
+                description: "Supplier ID (required for for_supplier and link)",
+              },
+              buyerSupplierRefId: {
+                type: "string",
+                description: "External reference ID for the buyer-supplier relationship (for link)",
+              },
+              buyerRefKey: {
+                type: "string",
+                description: "Reference key for the buyer-supplier relationship (for link)",
+              },
+            },
+            required: ["action"],
+          },
+        },
+        {
+          name: "imports",
+          description:
+            "Manage file imports. Use when the user wants to upload a supplier CSV, check recent import batches, or validate imported data for quality issues like placeholder emails, invalid phone numbers, or cross-field contamination.\n\nActions:\n- `upload` — Upload a CSV file for processing\n- `batches` — List recent import jobs with status and entity counts\n- `validate` — Check imported data for garbage/invalid content with remediation suggestions",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["upload", "batches", "validate"],
+                description: "The action to perform",
+              },
               filePath: {
                 type: "string",
-                description: "Path to the CSV file to upload",
+                description: "Path to the CSV file to upload (required for upload)",
               },
               fileName: {
                 type: "string",
-                description: "Optional filename override (defaults to basename of filePath)",
+                description: "Optional filename override (for upload)",
               },
-              response_format: {
+              limit: {
+                type: "number",
+                description: "Maximum number of import jobs to return (1-100, default 20, for batches)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              dateRange: {
+                type: "object",
+                description: "Date range of import batch to validate (yyyyMMdd format, for validate)",
+                properties: {
+                  from: {
+                    type: "string",
+                    description: "Start date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                  to: {
+                    type: "string",
+                    description: "End date (yyyyMMdd)",
+                    pattern: "^\\d{8}$",
+                  },
+                },
+                required: ["from", "to"],
+              },
+              buyerId: {
                 type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
+                description: "Scope to suppliers linked to this buyer (for validate)",
               },
             },
-            required: ["filePath"],
+            required: ["action"],
           },
         },
         {
-          name: "network_analyze_connections",
+          name: "matching",
           description:
-            "Analyze the buyer-supplier network to identify isolated nodes, network hubs, connection patterns, and suggest new links. Returns structured analysis that can be sent to Slack.",
+            "Monitor and review supplier matching jobs. Use when the user asks about matching progress, wants to see match candidates, or needs to review staged matches awaiting approval.\n\nActions:\n- `jobs` — List matching jobs (filter by status to find jobs needing review)\n- `job_detail` — Get detailed status and category breakdown for a specific job\n- `candidates` — List candidates from an import file with match categories and confidence scores\n- `staged` — List staged matches awaiting review with AI recommendations",
           inputSchema: {
             type: "object",
             properties: {
+              action: {
+                type: "string",
+                enum: ["jobs", "job_detail", "candidates", "staged"],
+                description: "The action to perform",
+              },
+              jobId: {
+                type: "string",
+                description:
+                  "Matching job ID (required for job_detail, candidates, staged)",
+              },
+              status: {
+                type: "string",
+                enum: [
+                  "PENDING",
+                  "RUNNING",
+                  "REVIEW",
+                  "FINALIZING",
+                  "COMPLETED",
+                  "FAILED",
+                  "ABORTED",
+                ],
+                description:
+                  "Filter by job status (for jobs) or review status (for staged)",
+              },
+              category: {
+                type: "string",
+                enum: ["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"],
+                description: "Filter by match category (for candidates, staged)",
+              },
+              pageSize: {
+                type: "number",
+                description: "Results per page (1-100, default 20)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for next page",
+              },
+            },
+            required: ["action"],
+          },
+        },
+        {
+          name: "analyze",
+          description:
+            "Analyze the supplier network for health, coverage, and quality. Use when the user asks about network health, wants to find gaps or isolated suppliers, or needs an assessment of import data quality. For viewing specific supplier or buyer data, use `suppliers` or `buyers` instead.\n\nActions:\n- `connections` — Identify isolated nodes, network hubs, and suggest new connections\n- `relationships` — Assess relationship health, coverage gaps, or map network structure (requires `analysisType`)\n- `import_quality` — Post-upload validation, pre-import preview, or data quality scoring (requires `mode`)",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["connections", "relationships", "import_quality"],
+                description: "The action to perform",
+              },
               includeSuggestions: {
                 type: "boolean",
-                description: "Include connection suggestions in the analysis",
+                description:
+                  "Include connection suggestions in the analysis (for connections)",
                 default: true,
               },
               minConnectionsForHub: {
                 type: "number",
-                description: "Minimum connections to be considered a network hub",
+                description:
+                  "Minimum connections to be considered a network hub (for connections)",
                 default: 5,
                 minimum: 1,
               },
-              response_format: {
+              analysisType: {
                 type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
-          name: "network_notify_slack",
-          description:
-            "Post network analysis results to Slack via webhook for team decision-making. Takes the structured result from network_analyze_connections and formats it as a Slack message.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              webhookUrl: {
-                type: "string",
+                enum: ["health", "coverage", "mapping"],
                 description:
-                  "Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)",
+                  "Type of analysis: 'health' (link status), 'coverage' (supplier gaps), 'mapping' (network structure). Required for relationships action.",
               },
-              analysisResult: {
-                oneOf: [
-                  {
-                    type: "object",
-                    description: "Network analysis result object",
-                  },
-                  {
-                    type: "string",
-                    description: "JSON string representation of the analysis result",
-                  },
-                ],
-                description:
-                  "Network analysis result in any format: object, JSON string, or wrapped in structuredContent. Can be from network_analyze_connections tool or any compatible format with summary/metrics data.",
-              },
-              includeDetails: {
+              includeInactive: {
                 type: "boolean",
                 description:
-                  "Whether to include detailed breakdowns in the Slack message",
+                  "Whether to include inactive links in the analysis (for relationships)",
                 default: false,
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["analysisResult"],
-          },
-        },
-        {
-          name: "network_send_slack_message",
-          description:
-            "Send a general message to Slack with customizable title, body text, key-value fields, action buttons, and color indicator. Use this for notifications, alerts, or any structured message that doesn't require the full network analysis format.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              webhookUrl: {
-                type: "string",
-                description:
-                  "Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)",
-              },
-              message: {
-                type: "object",
-                description: "The message content to send",
-                properties: {
-                  title: {
-                    type: "string",
-                    description: "Optional header text (max 150 chars)",
-                    maxLength: 150,
-                  },
-                  body: {
-                    type: "string",
-                    description: "Main message content with Slack markdown support (required, max 3000 chars)",
-                    maxLength: 3000,
-                  },
-                  fields: {
-                    type: "array",
-                    description: "Key-value pairs displayed in a 2-column grid (max 10)",
-                    maxItems: 10,
-                    items: {
-                      type: "object",
-                      properties: {
-                        label: {
-                          type: "string",
-                          maxLength: 50,
-                        },
-                        value: {
-                          type: "string",
-                          maxLength: 500,
-                        },
-                      },
-                      required: ["label", "value"],
-                    },
-                  },
-                  actions: {
-                    type: "array",
-                    description: "Clickable buttons with URLs (max 5)",
-                    maxItems: 5,
-                    items: {
-                      type: "object",
-                      properties: {
-                        text: {
-                          type: "string",
-                          description: "Button text (max 75 chars)",
-                          maxLength: 75,
-                        },
-                        url: {
-                          type: "string",
-                          description: "URL to open when clicked",
-                        },
-                        style: {
-                          type: "string",
-                          enum: ["primary", "danger"],
-                          description: "Button style: primary (green) or danger (red)",
-                        },
-                      },
-                      required: ["text", "url"],
-                    },
-                  },
-                  footer: {
-                    type: "string",
-                    description: "Custom footer text (max 200 chars)",
-                    maxLength: 200,
-                  },
-                  color: {
-                    type: "string",
-                    enum: ["good", "warning", "danger"],
-                    description: "Sidebar color indicator: good (green), warning (yellow), danger (red)",
-                  },
-                },
-                required: ["body"],
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["message"],
-          },
-        },
-        {
-          name: "network_analyze_import",
-          description:
-            "Comprehensive import analysis: post-upload validation, pre-import preview, or data quality assessment. Identifies duplicates, calculates quality metrics, and provides recommendations.",
-          inputSchema: {
-            type: "object",
-            properties: {
               mode: {
                 type: "string",
                 enum: ["post-upload", "preview", "quality"],
                 description:
-                  "Analysis mode: 'post-upload' (what was imported), 'preview' (what would happen), 'quality' (data quality scoring)",
+                  "Analysis mode: 'post-upload' (what was imported), 'preview' (what would happen), 'quality' (data quality scoring). Required for import_quality action.",
+              },
+              buyerId: {
+                type: "string",
+                description: "Scope analysis to a specific buyer",
               },
               dateRange: {
                 type: "object",
@@ -687,57 +437,116 @@ function createServer() {
                 },
                 required: ["from", "to"],
               },
-              buyerId: {
-                type: "string",
-                description: "Scope analysis to a specific buyer",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
             },
-            required: ["mode"],
+            required: ["action"],
           },
         },
         {
-          name: "network_analyze_relationships",
+          name: "notify_slack",
           description:
-            "Analyze buyer-supplier relationships: health assessment (link status, issues), coverage analysis (gaps, unlinked suppliers), or relationship mapping (network structure).",
+            "Send messages to Slack via webhook. Use when the user wants to share results or alerts with the team.\n\nTypes:\n- `analysis` — Post formatted network analysis results (pass the result from the `analyze` tool)\n- `custom` — Send a freeform message with title, body, fields, buttons, and color",
           inputSchema: {
             type: "object",
             properties: {
-              buyerId: {
+              type: {
+                type: "string",
+                enum: ["analysis", "custom"],
+                description: "The type of message to send",
+              },
+              webhookUrl: {
                 type: "string",
                 description:
-                  "Buyer ID to analyze (optional - analyzes all if not provided)",
+                  "Slack Incoming Webhook URL (optional if SLACK_WEBHOOK_URL environment variable is set)",
               },
-              analysisType: {
-                type: "string",
-                enum: ["health", "coverage", "mapping"],
+              analysisResult: {
+                oneOf: [
+                  { type: "object", description: "Network analysis result object" },
+                  {
+                    type: "string",
+                    description: "JSON string representation of the analysis result",
+                  },
+                ],
                 description:
-                  "Type of analysis: 'health' (link status), 'coverage' (supplier gaps), 'mapping' (network structure)",
+                  "Network analysis result (required for analysis type)",
               },
-              includeInactive: {
+              includeDetails: {
                 type: "boolean",
-                description: "Whether to include inactive links in the analysis",
+                description:
+                  "Whether to include detailed breakdowns in the Slack message",
                 default: false,
               },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
+              message: {
+                type: "object",
+                description: "The message content to send (required for custom type)",
+                properties: {
+                  title: {
+                    type: "string",
+                    description: "Optional header text (max 150 chars)",
+                    maxLength: 150,
+                  },
+                  body: {
+                    type: "string",
+                    description:
+                      "Main message content with Slack markdown support (required, max 3000 chars)",
+                    maxLength: 3000,
+                  },
+                  fields: {
+                    type: "array",
+                    description: "Key-value pairs displayed in a 2-column grid (max 10)",
+                    maxItems: 10,
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: { type: "string", maxLength: 50 },
+                        value: { type: "string", maxLength: 500 },
+                      },
+                      required: ["label", "value"],
+                    },
+                  },
+                  actions: {
+                    type: "array",
+                    description: "Clickable buttons with URLs (max 5)",
+                    maxItems: 5,
+                    items: {
+                      type: "object",
+                      properties: {
+                        text: {
+                          type: "string",
+                          description: "Button text (max 75 chars)",
+                          maxLength: 75,
+                        },
+                        url: { type: "string", description: "URL to open when clicked" },
+                        style: {
+                          type: "string",
+                          enum: ["primary", "danger"],
+                          description: "Button style: primary (green) or danger (red)",
+                        },
+                      },
+                      required: ["text", "url"],
+                    },
+                  },
+                  footer: {
+                    type: "string",
+                    description: "Custom footer text (max 200 chars)",
+                    maxLength: 200,
+                  },
+                  color: {
+                    type: "string",
+                    enum: ["good", "warning", "danger"],
+                    description:
+                      "Sidebar color indicator: good (green), warning (yellow), danger (red)",
+                  },
+                },
+                required: ["body"],
               },
             },
-            required: ["analysisType"],
+            required: ["type"],
           },
         },
         {
-          name: "network_lookup_client_id",
+          name: "lookup_client",
           description:
-            "Look up a client ID by human-friendly name. Fuzzy matches against client names from the configuration store. Returns the matched client name and UUID. Useful when you know a client name like 'Comet Electric' but need their client ID.",
+            "Resolve a human-friendly client name to its UUID. Use when the user refers to a client by name (e.g., \"Comet Electric\") and you need the client ID for other tools. Fuzzy matches against the configuration store.\n\nExample: look up \"Comet Electric\" to get their client UUID for use with `buyers` or `relationships`.",
           inputSchema: {
             type: "object",
             properties: {
@@ -754,183 +563,6 @@ function createServer() {
               },
             },
             required: ["name"],
-          },
-        },
-        {
-          name: "network_validate_import_data",
-          description:
-            "Validate imported supplier data for garbage/invalid content. Detects placeholder emails, names in address fields, invalid phone numbers, cross-field contamination, and other data quality issues. Returns per-supplier issues with remediation suggestions.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              dateRange: {
-                type: "object",
-                description: "Date range of import batch to validate (yyyyMMdd format)",
-                properties: {
-                  from: {
-                    type: "string",
-                    description: "Start date (yyyyMMdd)",
-                    pattern: "^\\d{8}$",
-                  },
-                  to: {
-                    type: "string",
-                    description: "End date (yyyyMMdd)",
-                    pattern: "^\\d{8}$",
-                  },
-                },
-                required: ["from", "to"],
-              },
-              buyerId: {
-                type: "string",
-                description: "Scope validation to suppliers linked to this buyer",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
-          name: "network_list_import_batches",
-          description:
-            "List recent file import jobs/batches. Shows filename, status, entity counts, and timestamps for each import. Use this to discover available import batches before running validation with network_validate_import_data.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              limit: {
-                type: "number",
-                description: "Maximum number of import jobs to return (1-100, default 20)",
-                default: 20,
-                minimum: 1,
-                maximum: 100,
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
-          name: "network_list_matching_jobs",
-          description:
-            "List supplier matching jobs. Shows file name, status, match category counts, and progress. Use to discover jobs in REVIEW status that need attention.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              status: {
-                type: "string",
-                enum: ["PENDING", "RUNNING", "REVIEW", "FINALIZING", "COMPLETED", "FAILED", "ABORTED"],
-                description: "Filter by job status (optional)",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-          },
-        },
-        {
-          name: "network_get_matching_job",
-          description:
-            "Get detailed status and progress for a specific matching job. Shows match category breakdown, processing progress, and finalization results.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              jobId: {
-                type: "string",
-                description: "Matching job ID",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["jobId"],
-          },
-        },
-        {
-          name: "network_list_match_candidates",
-          description:
-            "List match candidates for a matching job. Each candidate is a row from the import file with its match category (EXACT_MATCH, POSSIBLE_MATCH, CONFLICT, NET_NEW) and confidence score.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              jobId: {
-                type: "string",
-                description: "Matching job ID",
-              },
-              category: {
-                type: "string",
-                enum: ["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"],
-                description: "Filter by match category",
-              },
-              pageSize: {
-                type: "number",
-                description: "Results per page (1-100, default 20)",
-                default: 20,
-              },
-              cursor: {
-                type: "string",
-                description: "Pagination cursor for next page",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["jobId"],
-          },
-        },
-        {
-          name: "network_list_staged_matches",
-          description:
-            "List staged matches awaiting review for a matching job. Shows match alternatives, AI recommendations, and review status. Filter by review status (PENDING, APPROVED, REJECTED) or match category.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              jobId: {
-                type: "string",
-                description: "Matching job ID",
-              },
-              status: {
-                type: "string",
-                enum: ["PENDING", "APPROVED", "REJECTED", "SKIPPED"],
-                description: "Filter by review status",
-              },
-              category: {
-                type: "string",
-                enum: ["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"],
-                description: "Filter by match category",
-              },
-              pageSize: {
-                type: "number",
-                description: "Results per page (1-100, default 20)",
-                default: 20,
-              },
-              cursor: {
-                type: "string",
-                description: "Pagination cursor for next page",
-              },
-              response_format: {
-                type: "string",
-                enum: ["markdown", "json"],
-                description: "Output format",
-                default: "markdown",
-              },
-            },
-            required: ["jobId"],
           },
         },
       ],
@@ -950,170 +582,65 @@ function createServer() {
     // Log raw request
     console.error("=== MCP Request (CallTool) ===");
     console.error(JSON.stringify(request, null, 2));
-    
+
     try {
       const { name, arguments: args } = request.params;
 
       let response;
       switch (name) {
-        case "network_search_suppliers": {
-          const params = SupplierSearchSchema.parse(args);
-          response = await searchSuppliers(params);
+        case "search": {
+          const params = SearchToolSchema.parse(args);
+          response = await searchSuppliers({ ...params, response_format: ResponseFormat.MARKDOWN });
           break;
         }
-
-        case "network_list_suppliers": {
-          const params = ListSuppliersSchema.parse(args);
-          response = await listSuppliers(params);
+        case "suppliers": {
+          const params = SuppliersToolSchema.parse(args);
+          response = await handleSuppliers(params);
           break;
         }
-
-        case "network_get_supplier": {
-          const params = GetSupplierSchema.parse(args);
-          response = await getSupplier(params);
+        case "buyers": {
+          const params = BuyersToolSchema.parse(args);
+          response = await handleBuyers(params);
           break;
         }
-
-        case "network_get_suppliers_by_date": {
-          const params = GetSuppliersByDateSchema.parse(args);
-          response = await getSuppliersByDate(params);
+        case "relationships": {
+          const params = RelationshipsToolSchema.parse(args);
+          response = await handleRelationships(params);
           break;
         }
-
-        case "network_get_supplier_history": {
-          const params = GetSupplierHistorySchema.parse(args);
-          response = await getSupplierHistory(params);
+        case "imports": {
+          const params = ImportsToolSchema.parse(args);
+          response = await handleImports(params);
           break;
         }
-
-        case "network_list_buyers": {
-          const params = ListBuyersSchema.parse(args);
-          response = await listBuyers(params);
+        case "matching": {
+          const params = MatchingToolSchema.parse(args);
+          response = await handleMatching(params);
           break;
         }
-
-        case "network_get_buyer": {
-          const params = GetBuyerSchema.parse(args);
-          response = await getBuyer(params);
+        case "analyze": {
+          const params = AnalyzeToolSchema.parse(args);
+          response = await handleAnalyze(params);
           break;
         }
-
-        case "network_get_buyer_by_client_id": {
-          const params = GetBuyerByClientIdSchema.parse(args);
-          response = await getBuyerByClientId(params);
+        case "notify_slack": {
+          const params = NotifySlackToolSchema.parse(args);
+          response = await handleNotifySlack(params);
           break;
         }
-
-        case "network_get_suppliers_for_buyer": {
-          const params = GetSuppliersForBuyerSchema.parse(args);
-          response = await getSuppliersForBuyer(params);
-          break;
-        }
-
-        case "network_get_buyers_for_supplier": {
-          const params = GetBuyersForSupplierSchema.parse(args);
-          response = await getBuyersForSupplier(params);
-          break;
-        }
-
-        case "network_create_buyer_link": {
-          const params = CreateBuyerLinkSchema.parse(args);
-          response = await createBuyerLink(params);
-          break;
-        }
-
-        case "network_create_buyer": {
-          const params = CreateBuyerSchema.parse(args);
-          response = await createBuyer(params);
-          break;
-        }
-
-        case "network_upload_file": {
-          const params = UploadFileSchema.parse(args);
-          response = await uploadFile(params);
-          break;
-        }
-
-        case "network_analyze_connections": {
-          const params = NetworkAnalysisSchema.parse(args);
-          response = await analyzeNetworkConnections(params);
-          break;
-        }
-
-        case "network_notify_slack": {
-          const params = SlackNotificationSchema.parse(args);
-          response = await notifySlack(params);
-          break;
-        }
-
-        case "network_send_slack_message": {
-          const params = SlackGeneralNotificationSchema.parse(args);
-          response = await sendSlackMessage(params);
-          break;
-        }
-
-        case "network_analyze_import": {
-          const params = ImportAnalysisSchema.parse(args);
-          response = await analyzeImport(params);
-          break;
-        }
-
-        case "network_analyze_relationships": {
-          const params = RelationshipAnalysisSchema.parse(args);
-          response = await analyzeRelationships(params);
-          break;
-        }
-
-        case "network_lookup_client_id": {
-          const params = LookupClientIdSchema.parse(args);
+        case "lookup_client": {
+          const params = LookupClientToolSchema.parse(args);
           response = await lookupClientId(params);
           break;
         }
-
-        case "network_validate_import_data": {
-          const params = DataValidationSchema.parse(args);
-          response = await validateImportDataTool(params);
-          break;
-        }
-
-        case "network_list_import_batches": {
-          const params = ListImportBatchesSchema.parse(args);
-          response = await listImportBatchesTool(params);
-          break;
-        }
-
-        case "network_list_matching_jobs": {
-          const params = ListMatchingJobsSchema.parse(args);
-          response = await listMatchingJobsTool(params);
-          break;
-        }
-
-        case "network_get_matching_job": {
-          const params = GetMatchingJobSchema.parse(args);
-          response = await getMatchingJobTool(params);
-          break;
-        }
-
-        case "network_list_match_candidates": {
-          const params = ListMatchCandidatesSchema.parse(args);
-          response = await listMatchCandidatesTool(params);
-          break;
-        }
-
-        case "network_list_staged_matches": {
-          const params = ListStagedMatchesSchema.parse(args);
-          response = await listStagedMatchesTool(params);
-          break;
-        }
-
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
-      
+
       // Log raw response
       console.error("=== MCP Response (CallTool) ===");
       console.error(JSON.stringify(response, null, 2));
-      
+
       return response;
     } catch (error) {
       const errorMessage =
@@ -1127,11 +654,11 @@ function createServer() {
         ],
         isError: true,
       };
-      
+
       // Log error response
       console.error("=== MCP Error Response (CallTool) ===");
       console.error(JSON.stringify(errorResponse, null, 2));
-      
+
       return errorResponse;
     }
   });
@@ -1204,12 +731,15 @@ async function startHttp(port: number = 3000) {
 
   app.post("/mcp", async (_req, res) => {
     res.status(501).json({
-      error: "HTTP mode not fully implemented. Please use stdio mode with: npm start"
+      error:
+        "HTTP mode not fully implemented. Please use stdio mode with: npm start",
     });
   });
 
   app.listen(port, () => {
-    console.error(`Network MCP Server HTTP endpoint available on http://localhost:${port}/mcp`);
+    console.error(
+      `Network MCP Server HTTP endpoint available on http://localhost:${port}/mcp`
+    );
     console.error(`Note: For full functionality, use stdio mode: npm start`);
   });
 }

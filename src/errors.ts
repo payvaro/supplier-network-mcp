@@ -12,11 +12,11 @@ const HTTP_STATUS_PATTERNS: Record<
     return `Not found. ${hints}`;
   },
   '401': () => 'Authentication failed. Check that NETWORK_API_KEY is set and valid.',
-  '400': (tool, action) =>
+  '400': (_tool, action) =>
     `Invalid request. Check parameter format for the '${action}' action and try again.`,
   '403': () => 'Access denied. The API key may not have permission for this operation.',
-  '409': (tool, action) => {
-    if (tool === 'relationships' && action === 'link') {
+  '409': (_tool, action) => {
+    if (_tool === 'relationships' && action === 'link') {
       return 'Link already exists between this buyer and supplier.';
     }
     return 'Conflict — this resource already exists or conflicts with existing data.';
@@ -25,7 +25,7 @@ const HTTP_STATUS_PATTERNS: Record<
 
 function get404Hints(
   tool: string,
-  action?: string,
+  _action?: string,
   params?: Record<string, unknown>
 ): string {
   const id = params?.id || params?.jobId || params?.buyerId || params?.supplierId;
