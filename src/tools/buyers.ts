@@ -11,9 +11,12 @@ import type {
   GetSuppliersForBuyerInput,
   GetBuyersForSupplierInput,
   CreateBuyerLinkInput,
-  CreateBuyerInput
+  CreateBuyerInput,
+  BuyersToolInput,
 } from "../schemas/index.js";
 import type { BuyerListResult, SupplierListResult } from "../types.js";
+import { ResponseFormat } from "../constants.js";
+import { createActionableError } from "../errors.js";
 
 /**
  * List all buyers
@@ -369,6 +372,53 @@ export async function createBuyerLink(params: CreateBuyerLinkInput) {
         type: "text" as const,
         text: errorResponse.text
       }]
+    };
+  }
+}
+
+/**
+ * Dispatch wrapper for the consolidated buyers tool
+ */
+export async function handleBuyers(params: BuyersToolInput) {
+  try {
+    switch (params.action) {
+      case "list":
+        return await listBuyers({ response_format: ResponseFormat.MARKDOWN });
+      case "get":
+        if (params.clientId) {
+          return await getBuyerByClientId({
+            clientId: params.clientId,
+            response_format: ResponseFormat.MARKDOWN,
+          });
+        }
+        return await getBuyer({
+          id: params.id!,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "create":
+        return await createBuyer({
+          clientId: params.clientId!,
+          name: params.name,
+          franchiseName: params.franchiseName,
+          storeIdentifier: params.storeIdentifier,
+          status: params.status,
+          addresses: params.addresses,
+          contacts: params.contacts,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      default:
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `❌ Error: Unknown action '${(params as { action: string }).action}'.` }],
+        };
+    }
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{
+        type: "text" as const,
+        text: createActionableError(error instanceof Error ? error : String(error), 'buyers', params.action, params as Record<string, unknown>).text,
+      }],
     };
   }
 }

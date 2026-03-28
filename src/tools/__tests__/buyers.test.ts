@@ -7,6 +7,7 @@ import {
   getBuyersForSupplier,
   createBuyerLink,
   createBuyer,
+  handleBuyers,
 } from '../buyers.js';
 import { createMockNetworkAPIClient, type MockNetworkAPIClient } from '../../__mocks__/api-client.mock.js';
 import { createBuyer as createBuyerFixture, createSupplier, createBuyerLink as createBuyerLinkFixture, createAddress, createContact } from '../../test-utils/fixtures.js';
@@ -484,6 +485,58 @@ describe('buyer tools', () => {
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.name).toBe('JSON Buyer');
+    });
+  });
+
+  describe('handleBuyers', () => {
+    it('dispatches list action', async () => {
+      const buyers = [createBuyerFixture({ name: 'Buyer A', clientId: 'client-a' })];
+      mockClient.listBuyers.mockResolvedValue(buyers);
+
+      const result = await handleBuyers({ action: 'list' });
+
+      expect(mockClient.listBuyers).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Buyer');
+    });
+
+    it('dispatches get action by id', async () => {
+      const buyer = createBuyerFixture({ id: 'buyer-1', name: 'Acme Buyer' });
+      mockClient.getBuyer.mockResolvedValue(buyer);
+
+      const result = await handleBuyers({ action: 'get', id: 'buyer-1' });
+
+      expect(mockClient.getBuyer).toHaveBeenCalledWith('buyer-1');
+      expect(result.content[0].text).toContain('Acme Buyer');
+    });
+
+    it('dispatches get action by clientId when clientId is provided', async () => {
+      const buyer = createBuyerFixture({ id: 'buyer-1', name: 'Acme Buyer', clientId: 'client-abc' });
+      mockClient.getBuyerByClientId.mockResolvedValue(buyer);
+
+      const result = await handleBuyers({ action: 'get', clientId: 'client-abc' });
+
+      expect(mockClient.getBuyerByClientId).toHaveBeenCalledWith('client-abc');
+      expect(mockClient.getBuyer).not.toHaveBeenCalled();
+      expect(result.content[0].text).toContain('client-abc');
+    });
+
+    it('dispatches create action', async () => {
+      const buyer = createBuyerFixture({ id: 'buyer-new', name: 'New Buyer', clientId: 'client-new' });
+      mockClient.createBuyer.mockResolvedValue(buyer);
+
+      const result = await handleBuyers({ action: 'create', clientId: 'client-new', name: 'New Buyer' });
+
+      expect(mockClient.createBuyer).toHaveBeenCalled();
+      expect(result.content[0].text).toContain('Buyer Created');
+    });
+
+    it('wraps errors with createActionableError', async () => {
+      mockClient.listBuyers.mockRejectedValue(new Error('Request failed with status code 404'));
+
+      const result = await handleBuyers({ action: 'list' });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('❌ Error:');
     });
   });
 });
