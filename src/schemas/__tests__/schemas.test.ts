@@ -19,6 +19,15 @@ import {
   ResponseFormatSchema,
   HistoryFormatSchema,
   LookupClientIdSchema,
+  SearchToolSchema,
+  SuppliersToolSchema,
+  BuyersToolSchema,
+  RelationshipsToolSchema,
+  ImportsToolSchema,
+  MatchingToolSchema,
+  AnalyzeToolSchema,
+  NotifySlackToolSchema,
+  LookupClientToolSchema,
 } from '../index.js';
 import { ResponseFormat, HistoryFormat } from '../../constants.js';
 
@@ -538,6 +547,321 @@ describe('schemas', () => {
     it('rejects invalid environment', () => {
       const result = LookupClientIdSchema.safeParse({ name: 'Comet Electric', environment: 'staging' });
       expect(result.success).toBe(false);
+    });
+  });
+});
+
+describe('consolidated schemas', () => {
+  describe('SearchToolSchema', () => {
+    it('rejects empty object (no criteria)', () => {
+      const result = SearchToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].message).toContain('At least one search criterion');
+      }
+    });
+
+    it('accepts name as sole criterion', () => {
+      const result = SearchToolSchema.safeParse({ name: 'Acme' });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts address as sole criterion', () => {
+      const result = SearchToolSchema.safeParse({ address: { city: 'Springfield' } });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts email as sole criterion', () => {
+      const result = SearchToolSchema.safeParse({ email: 'test@example.com' });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects invalid email', () => {
+      const result = SearchToolSchema.safeParse({ email: 'not-an-email' });
+      expect(result.success).toBe(false);
+    });
+
+    it('applies default values', () => {
+      const result = SearchToolSchema.parse({ name: 'Test' });
+      expect(result.minMatchScore).toBe(0.4);
+      expect(result.maxResults).toBe(10);
+    });
+  });
+
+  describe('SuppliersToolSchema', () => {
+    it('requires action', () => {
+      const result = SuppliersToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts list action with no extra params', () => {
+      const result = SuppliersToolSchema.safeParse({ action: 'list' });
+      expect(result.success).toBe(true);
+    });
+
+    it('get action requires id', () => {
+      const missing = SuppliersToolSchema.safeParse({ action: 'get' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'get' action requires 'id'");
+      }
+
+      const valid = SuppliersToolSchema.safeParse({ action: 'get', id: 'sup-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('history action requires id', () => {
+      const missing = SuppliersToolSchema.safeParse({ action: 'history' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'history' action requires 'id'");
+      }
+
+      const valid = SuppliersToolSchema.safeParse({ action: 'history', id: 'sup-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('by_date action requires date in yyyyMMdd format', () => {
+      const missing = SuppliersToolSchema.safeParse({ action: 'by_date' });
+      expect(missing.success).toBe(false);
+
+      const invalidFormat = SuppliersToolSchema.safeParse({ action: 'by_date', date: '2025-01-15' });
+      expect(invalidFormat.success).toBe(false);
+
+      const valid = SuppliersToolSchema.safeParse({ action: 'by_date', date: '20250115' });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('BuyersToolSchema', () => {
+    it('requires action', () => {
+      const result = BuyersToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('list action needs no extra params', () => {
+      const result = BuyersToolSchema.safeParse({ action: 'list' });
+      expect(result.success).toBe(true);
+    });
+
+    it('get action requires id or clientId', () => {
+      const missing = BuyersToolSchema.safeParse({ action: 'get' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'get' action requires either 'id' or 'clientId'");
+      }
+
+      const withId = BuyersToolSchema.safeParse({ action: 'get', id: 'buyer-123' });
+      expect(withId.success).toBe(true);
+
+      const withClientId = BuyersToolSchema.safeParse({ action: 'get', clientId: 'CLIENT-001' });
+      expect(withClientId.success).toBe(true);
+    });
+
+    it('create action requires clientId', () => {
+      const missing = BuyersToolSchema.safeParse({ action: 'create' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'create' action requires 'clientId'");
+      }
+
+      const valid = BuyersToolSchema.safeParse({ action: 'create', clientId: 'CLIENT-001' });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('RelationshipsToolSchema', () => {
+    it('requires action', () => {
+      const result = RelationshipsToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('for_buyer requires buyerId', () => {
+      const missing = RelationshipsToolSchema.safeParse({ action: 'for_buyer' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'for_buyer' action requires 'buyerId'");
+      }
+
+      const valid = RelationshipsToolSchema.safeParse({ action: 'for_buyer', buyerId: 'buyer-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('for_supplier requires supplierId', () => {
+      const missing = RelationshipsToolSchema.safeParse({ action: 'for_supplier' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'for_supplier' action requires 'supplierId'");
+      }
+
+      const valid = RelationshipsToolSchema.safeParse({ action: 'for_supplier', supplierId: 'sup-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('link requires both buyerId and supplierId', () => {
+      const missingBoth = RelationshipsToolSchema.safeParse({ action: 'link' });
+      expect(missingBoth.success).toBe(false);
+
+      const missingSupplier = RelationshipsToolSchema.safeParse({ action: 'link', buyerId: 'buyer-123' });
+      expect(missingSupplier.success).toBe(false);
+
+      const missingBuyer = RelationshipsToolSchema.safeParse({ action: 'link', supplierId: 'sup-123' });
+      expect(missingBuyer.success).toBe(false);
+
+      const valid = RelationshipsToolSchema.safeParse({ action: 'link', buyerId: 'buyer-123', supplierId: 'sup-123' });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('ImportsToolSchema', () => {
+    it('requires action', () => {
+      const result = ImportsToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('upload requires filePath', () => {
+      const missing = ImportsToolSchema.safeParse({ action: 'upload' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'upload' action requires 'filePath'");
+      }
+
+      const valid = ImportsToolSchema.safeParse({ action: 'upload', filePath: '/path/to/file.csv' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('batches needs no required extra params', () => {
+      const result = ImportsToolSchema.safeParse({ action: 'batches' });
+      expect(result.success).toBe(true);
+    });
+
+    it('validate needs no required extra params', () => {
+      const result = ImportsToolSchema.safeParse({ action: 'validate' });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('MatchingToolSchema', () => {
+    it('requires action', () => {
+      const result = MatchingToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('jobs action needs nothing extra', () => {
+      const result = MatchingToolSchema.safeParse({ action: 'jobs' });
+      expect(result.success).toBe(true);
+    });
+
+    it('job_detail requires jobId', () => {
+      const missing = MatchingToolSchema.safeParse({ action: 'job_detail' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'job_detail' action requires 'jobId'");
+      }
+
+      const valid = MatchingToolSchema.safeParse({ action: 'job_detail', jobId: 'job-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('candidates requires jobId', () => {
+      const missing = MatchingToolSchema.safeParse({ action: 'candidates' });
+      expect(missing.success).toBe(false);
+
+      const valid = MatchingToolSchema.safeParse({ action: 'candidates', jobId: 'job-123' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('staged requires jobId', () => {
+      const missing = MatchingToolSchema.safeParse({ action: 'staged' });
+      expect(missing.success).toBe(false);
+
+      const valid = MatchingToolSchema.safeParse({ action: 'staged', jobId: 'job-123' });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('AnalyzeToolSchema', () => {
+    it('requires action', () => {
+      const result = AnalyzeToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('connections needs nothing extra', () => {
+      const result = AnalyzeToolSchema.safeParse({ action: 'connections' });
+      expect(result.success).toBe(true);
+    });
+
+    it('relationships requires analysisType', () => {
+      const missing = AnalyzeToolSchema.safeParse({ action: 'relationships' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'relationships' action requires 'analysisType'");
+      }
+
+      const valid = AnalyzeToolSchema.safeParse({ action: 'relationships', analysisType: 'health' });
+      expect(valid.success).toBe(true);
+    });
+
+    it('import_quality requires mode', () => {
+      const missing = AnalyzeToolSchema.safeParse({ action: 'import_quality' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'import_quality' action requires 'mode'");
+      }
+
+      const valid = AnalyzeToolSchema.safeParse({ action: 'import_quality', mode: 'quality' });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('NotifySlackToolSchema', () => {
+    it('requires type', () => {
+      const result = NotifySlackToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('analysis type requires analysisResult', () => {
+      const missing = NotifySlackToolSchema.safeParse({ type: 'analysis' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'analysis' type requires 'analysisResult'");
+      }
+
+      const valid = NotifySlackToolSchema.safeParse({ type: 'analysis', analysisResult: { totalBuyers: 10 } });
+      expect(valid.success).toBe(true);
+    });
+
+    it('custom type requires message with body', () => {
+      const missing = NotifySlackToolSchema.safeParse({ type: 'custom' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0].message).toContain("'custom' type requires a 'message' object");
+      }
+
+      const valid = NotifySlackToolSchema.safeParse({ type: 'custom', message: { body: 'Hello world' } });
+      expect(valid.success).toBe(true);
+    });
+  });
+
+  describe('LookupClientToolSchema', () => {
+    it('requires name', () => {
+      const result = LookupClientToolSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('requires non-empty name', () => {
+      const result = LookupClientToolSchema.safeParse({ name: '' });
+      expect(result.success).toBe(false);
+    });
+
+    it('defaults environment to dev', () => {
+      const result = LookupClientToolSchema.parse({ name: 'Comet Electric' });
+      expect(result.environment).toBe('dev');
+    });
+
+    it('accepts explicit environment', () => {
+      const result = LookupClientToolSchema.safeParse({ name: 'Comet Electric', environment: 'prod' });
+      expect(result.success).toBe(true);
     });
   });
 });

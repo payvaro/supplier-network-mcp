@@ -13,9 +13,12 @@ import type {
   GetSupplierInput,
   GetSuppliersByDateInput,
   GetSupplierHistoryInput,
-  UploadFileInput
+  UploadFileInput,
+  SuppliersToolInput,
 } from "../schemas/index.js";
 import type { SearchResult, SupplierListResult } from "../types.js";
+import { ResponseFormat, HistoryFormat } from "../constants.js";
+import { createActionableError } from "../errors.js";
 
 /**
  * Search for suppliers with fuzzy matching
@@ -264,6 +267,52 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput) {
         type: "text" as const,
         text: errorResponse.text
       }]
+    };
+  }
+}
+
+/**
+ * Dispatch wrapper for the consolidated suppliers tool
+ */
+export async function handleSuppliers(params: SuppliersToolInput) {
+  try {
+    switch (params.action) {
+      case "list":
+        return await listSuppliers({
+          pageSize: params.pageSize ?? 20,
+          cursor: params.cursor,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "get":
+        return await getSupplier({
+          id: params.id!,
+          includeLinks: params.includeLinks ?? false,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "history":
+        return await getSupplierHistory({
+          id: params.id!,
+          format: params.format ?? HistoryFormat.COMPACT,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      case "by_date":
+        return await getSuppliersByDate({
+          date: params.date!,
+          response_format: ResponseFormat.MARKDOWN,
+        });
+      default:
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `❌ Error: Unknown action '${(params as { action: string }).action}'.` }],
+        };
+    }
+  } catch (error) {
+    return {
+      isError: true,
+      content: [{
+        type: "text" as const,
+        text: createActionableError(error instanceof Error ? error : String(error), 'suppliers', params.action, params as Record<string, unknown>).text,
+      }],
     };
   }
 }

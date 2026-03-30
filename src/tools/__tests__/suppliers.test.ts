@@ -6,6 +6,7 @@ import {
   getSuppliersByDate,
   getSupplierHistory,
   uploadFile,
+  handleSuppliers,
 } from '../suppliers.js';
 import { createMockNetworkAPIClient, type MockNetworkAPIClient } from '../../__mocks__/api-client.mock.js';
 import { createSupplier, createAddress } from '../../test-utils/fixtures.js';
@@ -413,6 +414,57 @@ describe('supplier tools', () => {
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.status).toBe('success');
+    });
+  });
+
+  describe('handleSuppliers', () => {
+    it('dispatches list action', async () => {
+      mockClient.listSuppliers.mockResolvedValue({
+        items: [createSupplier({ name: 'Supplier A' })],
+        pagination: { count: 1, pageSize: 20, hasMore: false, nextCursor: null },
+      });
+
+      const result = await handleSuppliers({ action: 'list', pageSize: 20, includeLinks: false });
+
+      expect(mockClient.listSuppliers).toHaveBeenCalledWith(20, undefined);
+      expect(result.content[0].text).toContain('Supplier');
+    });
+
+    it('dispatches get action by id', async () => {
+      const supplier = createSupplier({ id: 'sup-1', name: 'Acme' });
+      mockClient.getSupplier.mockResolvedValue(supplier);
+
+      const result = await handleSuppliers({ action: 'get', id: 'sup-1', pageSize: 20, includeLinks: false });
+
+      expect(mockClient.getSupplier).toHaveBeenCalledWith('sup-1', false);
+      expect(result.content[0].text).toContain('Acme');
+    });
+
+    it('dispatches history action', async () => {
+      mockClient.getSupplierHistory.mockResolvedValue({ versions: [] });
+
+      const result = await handleSuppliers({ action: 'history', id: 'sup-1', pageSize: 20, includeLinks: false });
+
+      expect(mockClient.getSupplierHistory).toHaveBeenCalledWith('sup-1', HistoryFormat.COMPACT);
+      expect(result.content[0].text).toContain('sup-1');
+    });
+
+    it('dispatches by_date action', async () => {
+      mockClient.getSuppliersByDate.mockResolvedValue([createSupplier({ name: 'Updated' })]);
+
+      const result = await handleSuppliers({ action: 'by_date', date: '20260101', pageSize: 20, includeLinks: false });
+
+      expect(mockClient.getSuppliersByDate).toHaveBeenCalledWith('20260101');
+      expect(result.content[0].text).toContain('20260101');
+    });
+
+    it('wraps errors with createActionableError', async () => {
+      mockClient.listSuppliers.mockRejectedValue(new Error('Request failed with status code 404'));
+
+      const result = await handleSuppliers({ action: 'list', pageSize: 20, includeLinks: false });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('❌ Error:');
     });
   });
 });
