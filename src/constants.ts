@@ -5,6 +5,15 @@ export const DEFAULT_BASE_URL = "http://localhost:8080";
 export const AUTH_HEADER = "Authorization";
 export const CLIENT_ID_HEADER = "x-client-id";
 
+// Admin mode — when set to "true", tools may accept an `asClientId` per-request
+// override that replaces the x-client-id header for that call. The backing API
+// key is assumed to have permission to act on behalf of any client.
+export const NETWORK_ADMIN_MODE_ENV = "NETWORK_ADMIN_MODE";
+
+export function isAdminMode(): boolean {
+  return process.env[NETWORK_ADMIN_MODE_ENV] === "true";
+}
+
 // Slack Configuration
 export const DEFAULT_SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 

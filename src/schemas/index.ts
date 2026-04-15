@@ -352,6 +352,12 @@ export const ListStagedMatchesSchema = z.object({
 // Consolidated Tool Schemas (public API)
 // ========================================
 
+// Admin-only per-request override: replaces the x-client-id header for this call.
+// Each consolidated tool schema includes this field. Requires NETWORK_ADMIN_MODE=true
+// on the server; otherwise the handler rejects the request with an actionable error.
+const AsClientIdField = z.string().min(1).optional()
+  .describe("Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.");
+
 export const SearchToolSchema = z.object({
   name: z.string().optional().describe("Supplier name or partial name to search for"),
   address: AddressSchema.optional(),
@@ -360,6 +366,7 @@ export const SearchToolSchema = z.object({
     .describe("Minimum match score threshold (0.0-1.0). Default 0.4. Higher = stricter matching"),
   maxResults: z.number().int().min(1).max(100).default(10)
     .describe("Maximum number of results to return (1-100)"),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => data.name || data.address || data.email,
   { message: "At least one search criterion must be provided (name, address, or email)" }
@@ -373,6 +380,7 @@ export const SuppliersToolSchema = z.object({
   format: HistoryFormatSchema.optional(),
   pageSize: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if ((data.action === 'get' || data.action === 'history') && !data.id) return false;
@@ -405,6 +413,7 @@ export const BuyersToolSchema = z.object({
     title: z.string().optional(),
     type: z.enum(["PRIMARY", "SECONDARY", "OTHER"]).optional(),
   })).optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if (data.action === 'get' && !data.id && !data.clientId) return false;
@@ -424,6 +433,7 @@ export const RelationshipsToolSchema = z.object({
   supplierId: z.string().min(1).optional(),
   buyerSupplierRefId: z.string().optional(),
   buyerRefKey: z.string().optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if (data.action === 'for_buyer' && !data.buyerId) return false;
@@ -449,6 +459,7 @@ export const ImportsToolSchema = z.object({
     to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
   }).optional(),
   buyerId: z.string().optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if (data.action === 'upload' && !data.filePath) return false;
@@ -464,6 +475,7 @@ export const MatchingToolSchema = z.object({
   category: z.enum(["EXACT_MATCH", "POSSIBLE_MATCH", "CONFLICT", "NET_NEW"]).optional(),
   pageSize: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if (['job_detail', 'candidates', 'staged'].includes(data.action) && !data.jobId) return false;
@@ -486,6 +498,7 @@ export const AnalyzeToolSchema = z.object({
     from: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
     to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
   }).optional(),
+  asClientId: AsClientIdField,
 }).refine(
   (data) => {
     if (data.action === 'relationships' && !data.analysisType) return false;

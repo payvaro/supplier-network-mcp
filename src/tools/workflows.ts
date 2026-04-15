@@ -1,4 +1,4 @@
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { analyzePostUpload, analyzeQuality } from "../services/import-analyzer.js";
 import {
   analyzeHealth,
@@ -28,9 +28,9 @@ import type {
 /**
  * Analyze imports - orchestrates import analysis based on mode
  */
-export async function analyzeImport(params: ImportAnalysisInput) {
+export async function analyzeImport(params: ImportAnalysisInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     let result: ImportAnalysisResult;
 
     switch (params.mode) {
@@ -85,9 +85,9 @@ export async function analyzeImport(params: ImportAnalysisInput) {
 /**
  * Analyze relationships - orchestrates relationship analysis based on type
  */
-export async function analyzeRelationships(params: RelationshipAnalysisInput) {
+export async function analyzeRelationships(params: RelationshipAnalysisInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     let result: RelationshipAnalysisResult;
 
     const options = { includeInactive: params.includeInactive };
@@ -376,9 +376,9 @@ function formatRelationshipAnalysisMarkdown(result: RelationshipAnalysisResult):
 /**
  * Validate import data - checks for garbage/invalid content
  */
-export async function validateImportDataTool(params: DataValidationInput) {
+export async function validateImportDataTool(params: DataValidationInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const result = await runDataValidation(client, params.dateRange, params.buyerId);
 
     const formatted = formatOutput(
@@ -535,9 +535,9 @@ function truncateValue(value: string, maxLen = 50): string {
 /**
  * List file import batches/jobs
  */
-export async function listImportBatchesTool(params: ListImportBatchesInput) {
+export async function listImportBatchesTool(params: ListImportBatchesInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const jobs = await client.listFileImportJobs(params.limit);
 
     const result = { jobs, count: jobs.length };
@@ -656,9 +656,9 @@ function normalizeToArray<T>(response: T[] | PaginatedResponse<T> | unknown): T[
 /**
  * List matching jobs
  */
-export async function listMatchingJobsTool(params: ListMatchingJobsInput) {
+export async function listMatchingJobsTool(params: ListMatchingJobsInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const jobs = await client.listMatchingJobs(params.status);
     const result = { jobs, count: jobs.length };
 
@@ -712,9 +712,9 @@ function formatMatchingJobsMarkdown(jobs: MatchingJob[]): string {
 /**
  * Get matching job details
  */
-export async function getMatchingJobTool(params: GetMatchingJobInput) {
+export async function getMatchingJobTool(params: GetMatchingJobInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const job = await client.getMatchingJob(params.jobId);
 
     const formatted = formatOutput(job, params.response_format, () => formatMatchingJobDetailMarkdown(job));
@@ -772,9 +772,9 @@ function formatMatchingJobDetailMarkdown(job: MatchingJob): string {
 /**
  * List match candidates for a job
  */
-export async function listMatchCandidatesTool(params: ListMatchCandidatesInput) {
+export async function listMatchCandidatesTool(params: ListMatchCandidatesInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const response = await client.listMatchCandidates(params.jobId, params.category, params.pageSize, params.cursor);
     const candidates = normalizeToArray<MatchCandidate>(response);
     const result = { candidates, count: candidates.length, jobId: params.jobId };
@@ -817,9 +817,9 @@ function formatCandidatesMarkdown(candidates: MatchCandidate[], jobId: string, c
 /**
  * List staged matches for a job
  */
-export async function listStagedMatchesTool(params: ListStagedMatchesInput) {
+export async function listStagedMatchesTool(params: ListStagedMatchesInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const response = await client.listStagedMatches(params.jobId, params.status, params.category, params.pageSize, params.cursor);
     const matches = normalizeToArray<StagedMatch>(response);
     const result = { matches, count: matches.length, jobId: params.jobId };

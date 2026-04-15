@@ -125,6 +125,34 @@ export class NetworkAPIClient {
   private clientId: string;
   private baseURL: string;
 
+  /**
+   * Returns a scoped clone of this client that sends `x-client-id: <clientIdOverride>`
+   * on every request, replacing the default client ID for the lifetime of the clone.
+   * Used by tool handlers when an admin caller supplies `asClientId` per request.
+   *
+   * The clone shares `apiKey`, `baseURL`, and sanitization state with its parent,
+   * but has its own `axios` instance with the override baked into the default headers.
+   */
+  public withClientIdOverride(clientIdOverride: string): NetworkAPIClient {
+    if (!clientIdOverride) {
+      throw new Error("withClientIdOverride requires a non-empty clientIdOverride");
+    }
+    const clone: NetworkAPIClient = Object.create(NetworkAPIClient.prototype);
+    clone.apiKey = this.apiKey;
+    clone.baseURL = this.baseURL;
+    clone.clientId = clientIdOverride;
+    clone.client = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        "Content-Type": "application/json",
+        ...(this.apiKey && { [AUTH_HEADER]: `Bearer ${this.apiKey}` }),
+        [CLIENT_ID_HEADER]: clientIdOverride,
+      },
+      timeout: 30000,
+    });
+    return clone;
+  }
+
   constructor(apiKey?: string, baseURL?: string, clientId?: string) {
     const rawApiKey = apiKey || process.env.NETWORK_API_KEY || "";
     this.baseURL = baseURL || process.env.NETWORK_API_BASE_URL || DEFAULT_BASE_URL;

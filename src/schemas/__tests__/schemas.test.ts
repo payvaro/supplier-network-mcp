@@ -586,6 +586,39 @@ describe('consolidated schemas', () => {
       expect(result.minMatchScore).toBe(0.4);
       expect(result.maxResults).toBe(10);
     });
+
+    it('accepts optional asClientId admin override', () => {
+      const result = SearchToolSchema.safeParse({ name: 'Test', asClientId: 'client-123' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.asClientId).toBe('client-123');
+      }
+    });
+
+    it('rejects empty asClientId', () => {
+      const result = SearchToolSchema.safeParse({ name: 'Test', asClientId: '' });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('asClientId admin override on consolidated schemas', () => {
+    it('all consolidated tool schemas accept asClientId', () => {
+      expect(SuppliersToolSchema.safeParse({ action: 'list', asClientId: 'c1' }).success).toBe(true);
+      expect(BuyersToolSchema.safeParse({ action: 'list', asClientId: 'c1' }).success).toBe(true);
+      expect(RelationshipsToolSchema.safeParse({ action: 'for_buyer', buyerId: 'b1', asClientId: 'c1' }).success).toBe(true);
+      expect(ImportsToolSchema.safeParse({ action: 'batches', asClientId: 'c1' }).success).toBe(true);
+      expect(MatchingToolSchema.safeParse({ action: 'jobs', asClientId: 'c1' }).success).toBe(true);
+      expect(AnalyzeToolSchema.safeParse({ action: 'connections', asClientId: 'c1' }).success).toBe(true);
+    });
+
+    it('all consolidated tool schemas reject empty asClientId', () => {
+      expect(SuppliersToolSchema.safeParse({ action: 'list', asClientId: '' }).success).toBe(false);
+      expect(BuyersToolSchema.safeParse({ action: 'list', asClientId: '' }).success).toBe(false);
+      expect(RelationshipsToolSchema.safeParse({ action: 'for_buyer', buyerId: 'b1', asClientId: '' }).success).toBe(false);
+      expect(ImportsToolSchema.safeParse({ action: 'batches', asClientId: '' }).success).toBe(false);
+      expect(MatchingToolSchema.safeParse({ action: 'jobs', asClientId: '' }).success).toBe(false);
+      expect(AnalyzeToolSchema.safeParse({ action: 'connections', asClientId: '' }).success).toBe(false);
+    });
   });
 
   describe('SuppliersToolSchema', () => {

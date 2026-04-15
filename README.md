@@ -48,9 +48,31 @@ export NETWORK_API_KEY="your-api-key-here"
 # Optional: API base URL (defaults to http://localhost:8080)
 export NETWORK_API_BASE_URL="http://localhost:8080"
 
+# Optional: Default client ID — sent as x-client-id on every request when no per-request override is supplied
+export NETWORK_CLIENT_ID="client-uuid"
+
+# Optional: Enable admin mode — allows tools to accept a per-request `asClientId` field.
+# Only enable this when the configured NETWORK_API_KEY is an admin token; the backend
+# must accept header overrides from that token for this to take effect.
+export NETWORK_ADMIN_MODE="true"
+
 # Optional: Slack webhook URL for notification tools
 export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
 ```
+
+### Admin-mode per-request client override
+
+When the server starts with `NETWORK_ADMIN_MODE=true`, every consolidated tool (`search`,
+`suppliers`, `buyers`, `relationships`, `imports`, `matching`, `analyze`) accepts an optional
+`asClientId` field. If supplied, the MCP server replaces the default `x-client-id` header
+for that single request, letting an admin caller act on any client's data without reconfiguring
+the server.
+
+- Without `NETWORK_ADMIN_MODE=true`, passing `asClientId` is rejected with an actionable error
+  before any request is sent upstream.
+- Pair with the `lookup_client` tool to resolve a human-readable client name to its UUID, then
+  pass that UUID as `asClientId` on subsequent tool calls.
+- The `lookup_client` tool itself is unaffected (it reads S3, not the Network API).
 
 ### LocalStack Testing Keys
 

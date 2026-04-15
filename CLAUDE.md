@@ -20,6 +20,8 @@ npm run start:http   # Start in HTTP mode on port 3000 (testing)
 
 - `NETWORK_API_KEY` - Required. API authentication key
 - `NETWORK_API_BASE_URL` - API endpoint (defaults to http://localhost:8080)
+- `NETWORK_CLIENT_ID` - Optional. Default client ID sent as `x-client-id` header
+- `NETWORK_ADMIN_MODE` - Optional. When set to `"true"`, consolidated tools accept an `asClientId` field to override `x-client-id` per request. Requires the configured API key to be an admin token on the Network API side.
 - `SLACK_WEBHOOK_URL` - Optional. For Slack notifications
 
 ## Architecture
@@ -56,6 +58,10 @@ src/
 2. Add TypeScript types to `src/types.ts` if needed
 3. Implement handler in appropriate `src/tools/*.ts` file
 4. Register tool in `src/index.ts` (ListToolsRequestSchema handler and CallToolRequestSchema switch)
+
+### Admin-Mode Per-Request `x-client-id` Override
+
+When a tool hits the Network API, each consolidated tool schema accepts an optional `asClientId` field. The dispatch wrapper (`handleBuyers`, `handleSuppliers`, etc.) checks `isAdminMode()` from `src/constants.ts`; if disabled it rejects with `createAdminOverrideRejectedError`. If enabled, it calls `getNetworkAPIClient().withClientIdOverride(id)` to get a scoped client (new axios instance with the override header baked in) and threads it as the final `clientOverride?: NetworkAPIClient` argument into each inner tool function. Individual tool functions should accept `clientOverride` and fall back to the singleton: `const client = clientOverride ?? getNetworkAPIClient();`.
 
 ## Tool Naming Convention
 
