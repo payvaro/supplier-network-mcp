@@ -1,4 +1,4 @@
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { searchAndRankSuppliers, normalizeAddress } from "../services/matching.js";
 import {
   formatSearchResultsMarkdown,
@@ -15,17 +15,18 @@ import type {
   GetSupplierHistoryInput,
   UploadFileInput,
   SuppliersToolInput,
+  SearchToolInput,
 } from "../schemas/index.js";
 import type { SearchResult, SupplierListResult } from "../types.js";
-import { ResponseFormat, HistoryFormat } from "../constants.js";
-import { createActionableError } from "../errors.js";
+import { ResponseFormat, HistoryFormat, isAdminMode } from "../constants.js";
+import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
 
 /**
  * Search for suppliers with fuzzy matching
  */
-export async function searchSuppliers(params: SupplierSearchInput) {
+export async function searchSuppliers(params: SupplierSearchInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
 
     // Get all suppliers (we'll filter client-side with fuzzy matching)
     const allSuppliers = await client.getAllSuppliers();
@@ -96,9 +97,9 @@ export async function searchSuppliers(params: SupplierSearchInput) {
 /**
  * List suppliers with pagination
  */
-export async function listSuppliers(params: ListSuppliersInput) {
+export async function listSuppliers(params: ListSuppliersInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const paginatedResponse = await client.listSuppliers(params.pageSize, params.cursor);
 
     const result: SupplierListResult = {
@@ -151,9 +152,9 @@ export async function listSuppliers(params: ListSuppliersInput) {
 /**
  * Get a specific supplier by ID
  */
-export async function getSupplier(params: GetSupplierInput) {
+export async function getSupplier(params: GetSupplierInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const supplier = await client.getSupplier(params.id, params.includeLinks);
 
     const formatted = formatOutput(
@@ -186,9 +187,9 @@ export async function getSupplier(params: GetSupplierInput) {
 /**
  * Get suppliers updated on a specific date
  */
-export async function getSuppliersByDate(params: GetSuppliersByDateInput) {
+export async function getSuppliersByDate(params: GetSuppliersByDateInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const suppliers = await client.getSuppliersByDate(params.date);
 
     const result: SupplierListResult = {
@@ -237,9 +238,9 @@ export async function getSuppliersByDate(params: GetSuppliersByDateInput) {
 /**
  * Get supplier version history
  */
-export async function getSupplierHistory(params: GetSupplierHistoryInput) {
+export async function getSupplierHistory(params: GetSupplierHistoryInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const history = await client.getSupplierHistory(params.id, params.format);
 
     const formatted = formatOutput(
@@ -276,30 +277,38 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput) {
  */
 export async function handleSuppliers(params: SuppliersToolInput) {
   try {
+    if (params.asClientId && !isAdminMode()) {
+      const err = createAdminOverrideRejectedError('suppliers');
+      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
+    }
+    const scopedClient = params.asClientId
+      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+      : undefined;
+
     switch (params.action) {
       case "list":
         return await listSuppliers({
           pageSize: params.pageSize ?? 20,
           cursor: params.cursor,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "get":
         return await getSupplier({
           id: params.id!,
           includeLinks: params.includeLinks ?? false,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "history":
         return await getSupplierHistory({
           id: params.id!,
           format: params.format ?? HistoryFormat.COMPACT,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "by_date":
         return await getSuppliersByDate({
           date: params.date!,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       default:
         return {
           isError: true,
@@ -320,9 +329,31 @@ export async function handleSuppliers(params: SuppliersToolInput) {
 /**
  * Upload a CSV file to the network API
  */
-export async function uploadFile(params: UploadFileInput) {
+/**
+ * Dispatch wrapper for the consolidated search tool (admin-override aware)
+ */
+export async function handleSearch(params: SearchToolInput) {
+  if (params.asClientId && !isAdminMode()) {
+    const err = createAdminOverrideRejectedError('search');
+    return { isError: true, content: [{ type: "text" as const, text: err.text }] };
+  }
+  const scopedClient = params.asClientId
+    ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+    : undefined;
+
+  return await searchSuppliers({
+    name: params.name,
+    address: params.address,
+    email: params.email,
+    minMatchScore: params.minMatchScore,
+    maxResults: params.maxResults,
+    response_format: ResponseFormat.MARKDOWN,
+  }, scopedClient);
+}
+
+export async function uploadFile(params: UploadFileInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const result = await client.uploadFile(params.filePath, params.fileName);
 
     const formatted = formatOutput(

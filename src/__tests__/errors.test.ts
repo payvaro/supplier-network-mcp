@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { createActionableError, createValidationError } from '../errors.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { createActionableError, createValidationError, createAdminOverrideRejectedError } from '../errors.js';
+import { isAdminMode } from '../constants.js';
 
 describe('createActionableError', () => {
   it('enriches 404 errors with tool hints', () => {
@@ -76,5 +77,48 @@ describe('createValidationError', () => {
   it('suggests search for suppliers missing id', () => {
     const result = createValidationError('suppliers', 'get', 'id');
     expect(result.text).toContain('search');
+  });
+});
+
+describe('createAdminOverrideRejectedError', () => {
+  it('includes tool name in message', () => {
+    const result = createAdminOverrideRejectedError('buyers');
+    expect(result.text).toContain("'buyers'");
+    expect(result.isError).toBe(true);
+  });
+
+  it('mentions NETWORK_ADMIN_MODE env var as the fix', () => {
+    const result = createAdminOverrideRejectedError('analyze');
+    expect(result.text).toContain('NETWORK_ADMIN_MODE=true');
+  });
+
+  it('mentions the asClientId field by name', () => {
+    const result = createAdminOverrideRejectedError('suppliers');
+    expect(result.text).toContain('asClientId');
+  });
+});
+
+describe('isAdminMode', () => {
+  const ORIG = process.env.NETWORK_ADMIN_MODE;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.NETWORK_ADMIN_MODE;
+    else process.env.NETWORK_ADMIN_MODE = ORIG;
+  });
+
+  it('returns false when env var is unset', () => {
+    delete process.env.NETWORK_ADMIN_MODE;
+    expect(isAdminMode()).toBe(false);
+  });
+
+  it('returns true only when env var is literally "true"', () => {
+    process.env.NETWORK_ADMIN_MODE = 'true';
+    expect(isAdminMode()).toBe(true);
+  });
+
+  it('returns false for any other value including "TRUE", "1", "yes"', () => {
+    for (const val of ['TRUE', '1', 'yes', 'false', '']) {
+      process.env.NETWORK_ADMIN_MODE = val;
+      expect(isAdminMode()).toBe(false);
+    }
   });
 });

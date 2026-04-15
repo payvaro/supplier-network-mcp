@@ -2,6 +2,7 @@ import { vi, type Mock } from 'vitest';
 import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse } from '../types.js';
 
 export interface MockNetworkAPIClient {
+  withClientIdOverride: Mock<(clientIdOverride: string) => MockNetworkAPIClient>;
   listSuppliers: Mock<(pageSize?: number, cursor?: string) => Promise<PaginatedResponse<Supplier>>>;
   getAllSuppliers: Mock<() => Promise<Supplier[]>>;
   getSupplier: Mock<(id: string, includeLinks?: boolean) => Promise<Supplier>>;
@@ -35,7 +36,12 @@ export interface MockNetworkAPIClient {
 }
 
 export function createMockNetworkAPIClient(): MockNetworkAPIClient {
-  return {
+  const mock: MockNetworkAPIClient = {
+    // Admin override factory — by default returns the same mock so scoped
+    // calls hit the same spies. Tests that care about override routing can
+    // re-stub this to return a different mock.
+    withClientIdOverride: vi.fn(),
+
     // Supplier methods
     listSuppliers: vi.fn(),
     getAllSuppliers: vi.fn(),
@@ -78,6 +84,9 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
     // Aggregator links
     listAggregatorLinks: vi.fn(),
   };
+  // Default: scoped client is the same mock, so spies see all calls.
+  mock.withClientIdOverride.mockImplementation(() => mock);
+  return mock;
 }
 
 export function resetMockClient(mock: MockNetworkAPIClient): void {

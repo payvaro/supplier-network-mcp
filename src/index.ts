@@ -23,8 +23,7 @@ import {
 } from "./schemas/index.js";
 
 // Import tool handlers
-import { searchSuppliers } from "./tools/suppliers.js";
-import { handleSuppliers } from "./tools/suppliers.js";
+import { handleSearch, handleSuppliers } from "./tools/suppliers.js";
 import { handleBuyers } from "./tools/buyers.js";
 import { handleRelationships } from "./tools/relationships.js";
 import { handleImports } from "./tools/imports.js";
@@ -34,8 +33,6 @@ import { lookupClientId } from "./tools/clients.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
-
-import { ResponseFormat } from "./constants.js";
 
 /**
  * Create and configure the MCP server
@@ -590,7 +587,7 @@ function createServer() {
       switch (name) {
         case "search": {
           const params = SearchToolSchema.parse(args);
-          response = await searchSuppliers({ ...params, response_format: ResponseFormat.MARKDOWN });
+          response = await handleSearch(params);
           break;
         }
         case "suppliers": {

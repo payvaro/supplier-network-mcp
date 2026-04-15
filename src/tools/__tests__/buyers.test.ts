@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   listBuyers,
   getBuyer,
@@ -537,6 +537,57 @@ describe('buyer tools', () => {
 
       expect(result.isError).toBe(true);
       expect(result.content[0].text).toContain('❌ Error:');
+    });
+  });
+
+  describe('handleBuyers admin override (asClientId)', () => {
+    const ORIG = process.env.NETWORK_ADMIN_MODE;
+    afterEach(() => {
+      if (ORIG === undefined) delete process.env.NETWORK_ADMIN_MODE;
+      else process.env.NETWORK_ADMIN_MODE = ORIG;
+    });
+
+    it('rejects asClientId when admin mode is disabled', async () => {
+      delete process.env.NETWORK_ADMIN_MODE;
+
+      const result = await handleBuyers({ action: 'list', asClientId: 'client-abc' });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('admin mode');
+      expect(result.content[0].text).toContain('NETWORK_ADMIN_MODE=true');
+      expect(mockClient.withClientIdOverride).not.toHaveBeenCalled();
+      expect(mockClient.listBuyers).not.toHaveBeenCalled();
+    });
+
+    it('rejects asClientId when NETWORK_ADMIN_MODE is set to something other than "true"', async () => {
+      process.env.NETWORK_ADMIN_MODE = 'yes';
+
+      const result = await handleBuyers({ action: 'list', asClientId: 'client-abc' });
+
+      expect(result.isError).toBe(true);
+      expect(mockClient.withClientIdOverride).not.toHaveBeenCalled();
+    });
+
+    it('invokes withClientIdOverride and dispatches normally when admin mode is enabled', async () => {
+      process.env.NETWORK_ADMIN_MODE = 'true';
+      mockClient.listBuyers.mockResolvedValue([
+        createBuyerFixture({ name: 'Alpha', clientId: 'client-abc' }),
+      ]);
+
+      const result = await handleBuyers({ action: 'list', asClientId: 'client-abc' });
+
+      expect(mockClient.withClientIdOverride).toHaveBeenCalledWith('client-abc');
+      expect(mockClient.listBuyers).toHaveBeenCalled();
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('does not invoke withClientIdOverride when asClientId is omitted', async () => {
+      process.env.NETWORK_ADMIN_MODE = 'true';
+      mockClient.listBuyers.mockResolvedValue([]);
+
+      await handleBuyers({ action: 'list' });
+
+      expect(mockClient.withClientIdOverride).not.toHaveBeenCalled();
     });
   });
 });

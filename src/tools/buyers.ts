@@ -1,4 +1,4 @@
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import {
   formatSupplierListMarkdown,
   formatOutput,
@@ -15,15 +15,15 @@ import type {
   BuyersToolInput,
 } from "../schemas/index.js";
 import type { BuyerListResult, SupplierListResult } from "../types.js";
-import { ResponseFormat } from "../constants.js";
-import { createActionableError } from "../errors.js";
+import { ResponseFormat, isAdminMode } from "../constants.js";
+import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
 
 /**
  * List all buyers
  */
-export async function listBuyers(params: ListBuyersInput) {
+export async function listBuyers(params: ListBuyersInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const buyers = await client.listBuyers();
 
     const result: BuyerListResult = {
@@ -87,9 +87,9 @@ export async function listBuyers(params: ListBuyersInput) {
 /**
  * Get a specific buyer by ID
  */
-export async function getBuyer(params: GetBuyerInput) {
+export async function getBuyer(params: GetBuyerInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const buyer = await client.getBuyer(params.id);
 
     const formatted = formatOutput(
@@ -161,9 +161,9 @@ export async function getBuyer(params: GetBuyerInput) {
 /**
  * Get buyer by client ID
  */
-export async function getBuyerByClientId(params: GetBuyerByClientIdInput) {
+export async function getBuyerByClientId(params: GetBuyerByClientIdInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const buyer = await client.getBuyerByClientId(params.clientId);
 
     const formatted = formatOutput(
@@ -208,9 +208,9 @@ export async function getBuyerByClientId(params: GetBuyerByClientIdInput) {
 /**
  * Get suppliers linked to a buyer
  */
-export async function getSuppliersForBuyer(params: GetSuppliersForBuyerInput) {
+export async function getSuppliersForBuyer(params: GetSuppliersForBuyerInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const suppliers = await client.getSuppliersForBuyer(params.buyerId);
 
     const result: SupplierListResult = {
@@ -259,9 +259,9 @@ export async function getSuppliersForBuyer(params: GetSuppliersForBuyerInput) {
 /**
  * Get buyers linked to a supplier
  */
-export async function getBuyersForSupplier(params: GetBuyersForSupplierInput) {
+export async function getBuyersForSupplier(params: GetBuyersForSupplierInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const buyerLinks = await client.getBuyersForSupplier(params.supplierId);
 
     const formatted = formatOutput(
@@ -319,10 +319,10 @@ export async function getBuyersForSupplier(params: GetBuyersForSupplierInput) {
 /**
  * Create a link between a buyer and supplier
  */
-export async function createBuyerLink(params: CreateBuyerLinkInput) {
+export async function createBuyerLink(params: CreateBuyerLinkInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
-    
+    const client = clientOverride ?? getNetworkAPIClient();
+
     // Prepare link data from params
     const linkData = {
       buyerId: params.buyerId,
@@ -381,20 +381,28 @@ export async function createBuyerLink(params: CreateBuyerLinkInput) {
  */
 export async function handleBuyers(params: BuyersToolInput) {
   try {
+    if (params.asClientId && !isAdminMode()) {
+      const err = createAdminOverrideRejectedError('buyers');
+      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
+    }
+    const scopedClient = params.asClientId
+      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+      : undefined;
+
     switch (params.action) {
       case "list":
-        return await listBuyers({ response_format: ResponseFormat.MARKDOWN });
+        return await listBuyers({ response_format: ResponseFormat.MARKDOWN }, scopedClient);
       case "get":
         if (params.clientId) {
           return await getBuyerByClientId({
             clientId: params.clientId,
             response_format: ResponseFormat.MARKDOWN,
-          });
+          }, scopedClient);
         }
         return await getBuyer({
           id: params.id!,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "create":
         return await createBuyer({
           clientId: params.clientId!,
@@ -405,7 +413,7 @@ export async function handleBuyers(params: BuyersToolInput) {
           addresses: params.addresses,
           contacts: params.contacts,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       default:
         return {
           isError: true,
@@ -426,10 +434,10 @@ export async function handleBuyers(params: BuyersToolInput) {
 /**
  * Create a new buyer
  */
-export async function createBuyer(params: CreateBuyerInput) {
+export async function createBuyer(params: CreateBuyerInput, clientOverride?: NetworkAPIClient) {
   try {
-    const client = getNetworkAPIClient();
-    
+    const client = clientOverride ?? getNetworkAPIClient();
+
     // Prepare buyer data from params
     const buyerData = {
       name: params.name,

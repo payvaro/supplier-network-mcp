@@ -106,3 +106,20 @@ export function createValidationError(
     isError: true as const,
   };
 }
+
+/**
+ * Returned when a tool receives an `asClientId` per-request override but the
+ * server is not running in admin mode. Admin mode is enabled by starting the
+ * MCP with `NETWORK_ADMIN_MODE=true`.
+ */
+export function createAdminOverrideRejectedError(
+  tool: string
+): ActionableErrorResult {
+  return {
+    text:
+      `❌ Error: The '${tool}' tool received 'asClientId' but the server is not in admin mode. ` +
+      `Set NETWORK_ADMIN_MODE=true at startup to enable per-request client ID override, ` +
+      `or omit 'asClientId' to use the default client configured via NETWORK_CLIENT_ID.`,
+    isError: true as const,
+  };
+}

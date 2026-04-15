@@ -1,8 +1,8 @@
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { analyzeNetwork } from "../services/network-analyzer.js";
 import { postToSlack, postGeneralMessage, normalizeAnalysisResult } from "../services/slack-notifier.js";
 import { formatOutput, createErrorResponse } from "../services/formatter.js";
-import { DEFAULT_SLACK_WEBHOOK_URL, ResponseFormat } from "../constants.js";
+import { DEFAULT_SLACK_WEBHOOK_URL, ResponseFormat, isAdminMode } from "../constants.js";
 import type {
   NetworkAnalysisInput,
   SlackNotificationInput,
@@ -12,16 +12,17 @@ import type {
 } from "../schemas/index.js";
 import type { NetworkAnalysisResult } from "../types.js";
 import { analyzeImport, analyzeRelationships } from "./workflows.js";
-import { createActionableError } from "../errors.js";
+import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
 
 /**
  * Analyze network connections
  */
 export async function analyzeNetworkConnections(
-  params: NetworkAnalysisInput
+  params: NetworkAnalysisInput,
+  clientOverride?: NetworkAPIClient
 ) {
   try {
-    const client = getNetworkAPIClient();
+    const client = clientOverride ?? getNetworkAPIClient();
     const result = await analyzeNetwork(client, {
       includeSuggestions: params.includeSuggestions,
       minConnectionsForHub: params.minConnectionsForHub,
@@ -265,27 +266,35 @@ export async function notifySlack(params: SlackNotificationInput) {
  */
 export async function handleAnalyze(params: AnalyzeToolInput) {
   try {
+    if (params.asClientId && !isAdminMode()) {
+      const err = createAdminOverrideRejectedError('analyze');
+      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
+    }
+    const scopedClient = params.asClientId
+      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+      : undefined;
+
     switch (params.action) {
       case "connections":
         return await analyzeNetworkConnections({
           includeSuggestions: params.includeSuggestions ?? true,
           minConnectionsForHub: params.minConnectionsForHub ?? 5,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "relationships":
         return await analyzeRelationships({
           buyerId: params.buyerId,
           analysisType: params.analysisType!,
           includeInactive: params.includeInactive ?? false,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       case "import_quality":
         return await analyzeImport({
           mode: params.mode!,
           dateRange: params.dateRange,
           buyerId: params.buyerId,
           response_format: ResponseFormat.MARKDOWN,
-        });
+        }, scopedClient);
       default:
         return {
           isError: true,
