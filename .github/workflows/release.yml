@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.0.1)"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -12,8 +18,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "ref=${{ inputs.tag }}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "ref=${GITHUB_REF_NAME}" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -33,19 +50,28 @@ jobs:
       - name: Create tarball
         id: tarball
         run: |
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ steps.tag.outputs.ref }}"
           archive="network-mcp-${tag}.tar.gz"
           tar czf "${archive}" dist/ node_modules/ package.json
           sha256sum "${archive}" > "${archive%.tar.gz}.sha256"
           echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
           echo "checksum=${archive%.tar.gz}.sha256" >> "${GITHUB_OUTPUT}"
 
-      - name: Create GitHub Release
+      - name: Publish Release (idempotent)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.ref }}
+          ARCHIVE: ${{ steps.tarball.outputs.archive }}
+          CHECKSUM: ${{ steps.tarball.outputs.checksum }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            "${{ steps.tarball.outputs.archive }}" \
-            "${{ steps.tarball.outputs.checksum }}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} exists — uploading assets"
+            gh release upload "${TAG}" "${ARCHIVE}" "${CHECKSUM}" --clobber
+          else
+            echo "Creating release ${TAG}"
+            gh release create "${TAG}" \
+              "${ARCHIVE}" \
+              "${CHECKSUM}" \
+              --title "${TAG}" \
+              --generate-notes
+          fi
