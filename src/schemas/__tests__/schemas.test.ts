@@ -201,6 +201,20 @@ describe('schemas', () => {
       });
       expect(invalid.success).toBe(false);
     });
+
+    it('accepts EntityStatus status values', () => {
+      for (const status of ['ACTIVE', 'PENDING', 'INACTIVE']) {
+        const result = CreateBuyerSchema.safeParse({ clientId: 'c', status });
+        expect(result.success).toBe(true);
+      }
+    });
+
+    it('rejects non-EntityStatus status values', () => {
+      for (const status of ['active', 'DELETED', 'UNKNOWN', 'foo']) {
+        const result = CreateBuyerSchema.safeParse({ clientId: 'c', status });
+        expect(result.success).toBe(false);
+      }
+    });
   });
 
   describe('CreateBuyerLinkSchema', () => {

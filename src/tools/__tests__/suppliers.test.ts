@@ -252,6 +252,50 @@ describe('supplier tools', () => {
       expect(result.content[0].text).toContain('not found');
     });
 
+    it('preserves contract-refresh fields (tags, externalReferences, verifications, cardAcceptor, remittanceDetails, mergeState, acceptorIntegrations) in structuredContent', async () => {
+      const supplier = createSupplier({
+        id: 'supplier-rich',
+        shortId: 'SUP-42',
+        status: 'ACTIVE',
+        tin: '12-3456789',
+        dunsNumber: '123456789',
+        tags: [{ id: 'tag-1', name: 'preferred', category: 'tier', status: 'ACTIVE' }],
+        externalReferences: [{ id: 'er-1', type: 'SUPPLIER_EXTERNAL_ID', code: 'ACME-A1', status: 'ACTIVE' }],
+        verifications: [{ id: 'ver-1', type: 'KYB', verificationStatus: 'APPROVED', required: true, status: 'ACTIVE' }],
+        underwritings: [{ id: 'uw-1', underwritingStatus: 'APPROVED', required: true, status: 'ACTIVE' }],
+        lodgeCards: [{ id: 'lc-1', status: 'ACTIVE', cardBrand: 'VISA', lastFourDigits: '4242', expiryDate: '2030-12' }],
+        cardAcceptor: { id: 'cda-1', cardAcceptorStatus: 'ACCEPTED', source: 'PAYMENT_OUTCOME', status: 'ACTIVE' },
+        remittanceDetails: [
+          { id: 'rem-1', value: 'ap@acme.com', type: 'EMAIL', paymentType: 'ACH', status: 'ACTIVE' },
+        ],
+        acceptorIntegrations: [
+          { acceptorIntegrationId: 'NIN#1', supplierId: 'supplier-rich', networkId: 'ACC#1', paymentRailId: 'PTR#1', paymentType: 'CARD', connectionStatus: 'ACTIVE' },
+        ],
+        mergeState: null,
+      });
+      mockClient.getSupplier.mockResolvedValue(supplier);
+
+      const result = await getSupplier({
+        id: 'supplier-rich',
+        includeLinks: false,
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.structuredContent?.shortId).toBe('SUP-42');
+      expect(result.structuredContent?.status).toBe('ACTIVE');
+      expect(result.structuredContent?.tin).toBe('12-3456789');
+      expect(result.structuredContent?.dunsNumber).toBe('123456789');
+      expect((result.structuredContent?.tags as unknown[])?.[0]).toMatchObject({ name: 'preferred' });
+      expect((result.structuredContent?.externalReferences as unknown[])?.[0]).toMatchObject({ code: 'ACME-A1' });
+      expect((result.structuredContent?.verifications as unknown[])?.[0]).toMatchObject({ type: 'KYB', verificationStatus: 'APPROVED' });
+      expect((result.structuredContent?.underwritings as unknown[])?.[0]).toMatchObject({ underwritingStatus: 'APPROVED' });
+      expect((result.structuredContent?.lodgeCards as unknown[])?.[0]).toMatchObject({ cardBrand: 'VISA', lastFourDigits: '4242' });
+      expect(result.structuredContent?.cardAcceptor).toMatchObject({ cardAcceptorStatus: 'ACCEPTED', source: 'PAYMENT_OUTCOME' });
+      expect((result.structuredContent?.remittanceDetails as unknown[])?.[0]).toMatchObject({ type: 'EMAIL', paymentType: 'ACH', value: 'ap@acme.com' });
+      expect((result.structuredContent?.acceptorIntegrations as unknown[])?.[0]).toMatchObject({ paymentType: 'CARD', connectionStatus: 'ACTIVE' });
+      expect(result.structuredContent?.mergeState).toBeNull();
+    });
+
     it('returns JSON format when specified', async () => {
       const supplier = createSupplier({ name: 'JSON Test' });
       mockClient.getSupplier.mockResolvedValue(supplier);

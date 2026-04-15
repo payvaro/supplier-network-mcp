@@ -1,4 +1,23 @@
 // Network API TypeScript types
+//
+// These types mirror the `bundledOpenapi.yaml` contract in the Network API repo.
+// Fields are optional by default on response shapes; see the OpenAPI spec for
+// authoritative nullability and required-field semantics.
+
+/**
+ * Lifecycle state of a top-level entity (Supplier, Buyer).
+ * ACTIVE = operational, PENDING = awaiting activation, INACTIVE = soft-deleted.
+ */
+export type EntityStatus = "ACTIVE" | "PENDING" | "INACTIVE";
+
+/** Status value for sub-items (tags, verifications, remittance details, etc.). */
+export type SubItemStatus = "ACTIVE" | "PENDING" | "INACTIVE" | "DELETED";
+
+/** Connection status on relationship links (buyer-supplier, aggregator, acceptor integration). */
+export type ConnectionStatus = "ACTIVE" | "PENDING" | "INACTIVE" | "DELETED";
+
+/** Payment type used by remittance details and acceptor integrations. */
+export type PaymentType = "ACH" | "WIRE" | "CARD" | "CHECK" | "OTHER";
 
 export interface Address {
   streetAddress?: string;
@@ -45,7 +64,7 @@ export interface BuyerLink {
   supplierId?: string;
   buyerSupplierRefId?: string;
   buyerRefKey?: string;
-  connectionStatus?: "ACTIVE" | "INACTIVE" | "PENDING";
+  connectionStatus?: ConnectionStatus;
 }
 
 export interface AggregatorLink {
@@ -54,8 +73,141 @@ export interface AggregatorLink {
   buyerId?: string;
   aggregatorSupplierRefId?: string;
   aggregatorBuyerRefId?: string;
-  connectionStatus?: "ACTIVE" | "INACTIVE" | "PENDING";
+  connectionStatus?: ConnectionStatus;
   buyerRefKey?: string;
+}
+
+// --- Shared sub-item DTOs mirroring bundledOpenapi.yaml ---
+
+export interface Tag {
+  id?: string;
+  name?: string;
+  category?: string;
+  status?: SubItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SupplierExternalReference {
+  id?: string;
+  type?: "SUPPLIER_EXTERNAL_ID";
+  code?: string;
+  name?: string;
+  description?: string;
+  status?: SubItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BuyerExternalReference {
+  id?: string;
+  type?: "BUYER_EXTERNAL_ID";
+  code?: string;
+  name?: string;
+  description?: string;
+  status?: SubItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type VerificationType = "KYC" | "KYB";
+export type VerificationStatus = "PENDING" | "APPROVED" | "FAILED" | "EXCEPTION";
+
+export interface Verification {
+  id?: string;
+  type?: VerificationType;
+  verificationStatus?: VerificationStatus;
+  required?: boolean;
+  performedBy?: string;
+  completionDate?: string;
+  sourceOfVerification?: string;
+  status?: SubItemStatus;
+  lastModifiedBy?: string;
+  lastModifiedByEmail?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type UnderwritingStatus = "PENDING" | "APPROVED" | "DECLINED" | "EXCEPTION" | "EXPIRED";
+
+export interface Underwriting {
+  id?: string;
+  underwritingStatus?: UnderwritingStatus;
+  required?: boolean;
+  performedBy?: string;
+  completionDate?: string;
+  sourceOfUnderwriting?: string;
+  status?: SubItemStatus;
+  lastModifiedBy?: string;
+  lastModifiedByEmail?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type LodgeCardStatus = "ACTIVE" | "INACTIVE" | "EXPIRED" | "REVOKED";
+export type CardBrand = "VISA" | "MASTERCARD" | "AMEX" | "DISCOVER" | "OTHER";
+
+export interface LodgeCard {
+  id?: string;
+  parentEntityType?: string;
+  parentEntityId?: string;
+  vaultToken?: string;
+  status?: LodgeCardStatus;
+  cardBrand?: CardBrand;
+  lastFourDigits?: string;
+  expiryDate?: string;
+  cardholderName?: string;
+  capturedAt?: string;
+  capturedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CardAcceptorStatus = "ACCEPTED" | "REJECTED" | "UNKNOWN";
+export type CardAcceptorSource = "MANUAL" | "PAYMENT_OUTCOME" | "EXTERNAL_SYNC";
+
+export interface CardAcceptor {
+  id?: string;
+  cardAcceptorStatus?: CardAcceptorStatus;
+  source?: CardAcceptorSource;
+  status?: SubItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type RemittanceType = "EMAIL" | "FAX" | "PORTAL";
+
+export interface RemittanceDetail {
+  id?: string;
+  value?: string;
+  type?: RemittanceType;
+  paymentType?: PaymentType;
+  status?: SubItemStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AcceptorIntegration {
+  acceptorIntegrationId?: string;
+  supplierId?: string;
+  supplierName?: string;
+  networkId?: string;
+  acceptorName?: string;
+  paymentRailId?: string;
+  paymentType?: PaymentType;
+  connectionStatus?: ConnectionStatus;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SupplierMergeState {
+  mergedIntoSupplierId?: string;
+  mergeJobId?: string;
+  mergedAt?: string;
+}
+
+export interface BuyerCounts {
+  buyerLinkCount?: number;
 }
 
 export interface EntityTypeResult {
@@ -77,13 +229,27 @@ export interface FileImportJob {
 export interface Supplier {
   id?: string;
   name?: string;
+  shortId?: string;
+  /** @deprecated Use contacts with type=PRIMARY instead. Spec marks this read-only; writes are silently ignored. */
   email?: string;
+  status?: EntityStatus;
+  tin?: string;
+  dunsNumber?: string;
   address?: Address;
   contacts?: Contact[];
   aliases?: Alias[];
   metadata?: Metadata[];
+  tags?: Tag[];
+  externalReferences?: SupplierExternalReference[];
+  verifications?: Verification[];
+  underwritings?: Underwriting[];
+  lodgeCards?: LodgeCard[];
+  cardAcceptor?: CardAcceptor;
+  remittanceDetails?: RemittanceDetail[];
   buyerLinks?: BuyerLink[];
   aggregatorLinks?: AggregatorLink[];
+  acceptorIntegrations?: AcceptorIntegration[];
+  mergeState?: SupplierMergeState | null;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -94,11 +260,18 @@ export interface Buyer {
   name?: string;
   franchiseName?: string;
   storeIdentifier?: string;
+  shortId?: string;
   clientId?: string;
-  status?: string;
+  status?: EntityStatus;
   addresses?: Address[];
   contacts?: Contact[];
+  metadata?: Metadata[];
+  externalReferences?: BuyerExternalReference[];
+  verifications?: Verification[];
+  underwritings?: Underwriting[];
   buyerLinks?: BuyerLink[];
+  aggregatorLinks?: AggregatorLink[];
+  counts?: BuyerCounts;
   createdAt?: string;
   updatedAt?: string;
   [key: string]: unknown;
@@ -337,7 +510,7 @@ export interface NetworkNode {
 export interface NetworkEdge {
   from: string;
   to: string;
-  status: "ACTIVE" | "INACTIVE" | "PENDING";
+  status: ConnectionStatus;
 }
 
 export interface RelationshipMapping {

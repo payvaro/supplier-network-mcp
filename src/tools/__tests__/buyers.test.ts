@@ -540,6 +540,37 @@ describe('buyer tools', () => {
     });
   });
 
+  describe('contract refresh: extended Buyer DTO shape', () => {
+    it('preserves new fields (shortId, externalReferences, verifications, underwritings, counts) in structuredContent', async () => {
+      const buyer = createBuyerFixture({
+        id: 'buyer-rich',
+        shortId: 'BUY-42',
+        externalReferences: [
+          { id: 'er-1', type: 'BUYER_EXTERNAL_ID', code: 'ACME-001', status: 'ACTIVE' },
+        ],
+        verifications: [
+          { id: 'ver-1', type: 'KYB', verificationStatus: 'APPROVED', required: true, status: 'ACTIVE' },
+        ],
+        underwritings: [
+          { id: 'uw-1', underwritingStatus: 'APPROVED', required: true, status: 'ACTIVE' },
+        ],
+        counts: { buyerLinkCount: 12 },
+      });
+      mockClient.getBuyer.mockResolvedValue(buyer);
+
+      const result = await getBuyer({
+        id: 'buyer-rich',
+        response_format: ResponseFormat.MARKDOWN,
+      });
+
+      expect(result.structuredContent?.shortId).toBe('BUY-42');
+      expect((result.structuredContent?.externalReferences as unknown[])?.[0]).toMatchObject({ code: 'ACME-001' });
+      expect((result.structuredContent?.verifications as unknown[])?.[0]).toMatchObject({ verificationStatus: 'APPROVED' });
+      expect((result.structuredContent?.underwritings as unknown[])?.[0]).toMatchObject({ underwritingStatus: 'APPROVED' });
+      expect(result.structuredContent?.counts).toMatchObject({ buyerLinkCount: 12 });
+    });
+  });
+
   describe('handleBuyers admin override (asClientId)', () => {
     const ORIG = process.env.NETWORK_ADMIN_MODE;
     afterEach(() => {
