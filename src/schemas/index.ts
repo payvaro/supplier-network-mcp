@@ -110,9 +110,9 @@ export const CreateBuyerSchema = z.object({
   clientId: z.string()
     .min(1, "Client ID cannot be empty")
     .describe("External client reference identifier"),
-  status: z.string()
+  status: z.enum(["ACTIVE", "PENDING", "INACTIVE"])
     .optional()
-    .describe("Buyer status"),
+    .describe("Buyer lifecycle status (EntityStatus): ACTIVE | PENDING | INACTIVE"),
   addresses: z.array(AddressSchema)
     .optional()
     .describe("Buyer addresses"),
@@ -403,7 +403,7 @@ export const BuyersToolSchema = z.object({
   name: z.string().optional(),
   franchiseName: z.string().optional(),
   storeIdentifier: z.string().optional(),
-  status: z.string().optional(),
+  status: z.enum(["ACTIVE", "PENDING", "INACTIVE"]).optional(),
   addresses: z.array(AddressSchema).optional(),
   contacts: z.array(z.object({
     name: z.string().optional(),
