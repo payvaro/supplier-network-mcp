@@ -568,6 +568,22 @@ describe('api-client', () => {
       await expect(client.createSupplier({})).rejects.toThrow('Bad request');
     });
 
+    it('translates 400 "Client ID is required" into actionable admin guidance', async () => {
+      const axiosError = {
+        response: {
+          status: 400,
+          data: { error: 'Client ID is required. Admin users must specify X-Client-Id header.' },
+        },
+        message: 'Request failed',
+        isAxiosError: true,
+      };
+      mockAxiosInstance.get.mockRejectedValue(axiosError);
+      mockedAxios.isAxiosError.mockReturnValue(true);
+
+      await expect(client.listBuyers()).rejects.toThrow(/tenant scope/);
+      await expect(client.listBuyers()).rejects.toThrow(/NETWORK_CLIENT_ID|asClientId/);
+    });
+
     it('handles 500 server error', async () => {
       const axiosError = {
         response: {

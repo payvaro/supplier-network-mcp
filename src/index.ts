@@ -34,6 +34,15 @@ import { lookupClientId } from "./tools/clients.js";
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
 
+// Admin-only per-request override: replaces the x-client-id header for this call.
+// Requires NETWORK_ADMIN_MODE=true on the server; otherwise the dispatcher rejects
+// the request with createAdminOverrideRejectedError.
+const asClientIdProperty = {
+  type: "string",
+  description:
+    "Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.",
+} as const;
+
 /**
  * Create and configure the MCP server
  */
@@ -112,6 +121,7 @@ function createServer() {
                 minimum: 1,
                 maximum: 100,
               },
+              asClientId: asClientIdProperty,
             },
           },
         },
@@ -158,6 +168,7 @@ function createServer() {
                 type: "string",
                 description: "Pagination cursor for fetching the next page of results",
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
@@ -231,6 +242,7 @@ function createServer() {
                   },
                 },
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
@@ -263,6 +275,7 @@ function createServer() {
                 type: "string",
                 description: "Reference key for the buyer-supplier relationship (for link)",
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
@@ -315,6 +328,7 @@ function createServer() {
                 type: "string",
                 description: "Scope to suppliers linked to this buyer (for validate)",
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
@@ -366,6 +380,7 @@ function createServer() {
                 type: "string",
                 description: "Pagination cursor for next page",
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
@@ -434,6 +449,7 @@ function createServer() {
                 },
                 required: ["from", "to"],
               },
+              asClientId: asClientIdProperty,
             },
             required: ["action"],
           },
