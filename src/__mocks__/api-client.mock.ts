@@ -1,5 +1,9 @@
 import { vi, type Mock } from 'vitest';
-import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse } from '../types.js';
+import type {
+  Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob,
+  MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse,
+  ConfigRuleListResponse, EffectiveRuleResponse, DecisionTraceResponse,
+} from '../types.js';
 
 export interface MockNetworkAPIClient {
   withClientIdOverride: Mock<(clientIdOverride: string) => MockNetworkAPIClient>;
@@ -33,6 +37,23 @@ export interface MockNetworkAPIClient {
   listMatchCandidates: Mock<(jobId: string, category?: string, pageSize?: number, cursor?: string) => Promise<PaginatedResponse<MatchCandidate> | MatchCandidate[]>>;
   listStagedMatches: Mock<(jobId: string, status?: string, category?: string, pageSize?: number, cursor?: string) => Promise<PaginatedResponse<StagedMatch> | StagedMatch[]>>;
   listAggregatorLinks: Mock<() => Promise<AggregatorLink[]>>;
+  listConfigRules: Mock<(
+    scopeType: string,
+    scopeId: string,
+    pageSize?: number,
+    cursor?: string,
+  ) => Promise<ConfigRuleListResponse>>;
+  getEffectiveRules: Mock<(
+    entityType: string,
+    entityId: string,
+  ) => Promise<EffectiveRuleResponse>>;
+  resolveIntegrationTrace: Mock<(opts: {
+    buyerId: string;
+    supplierId: string;
+    paymentType?: string;
+    acceptorId?: string;
+    requireClear?: boolean;
+  }) => Promise<DecisionTraceResponse>>;
 }
 
 export function createMockNetworkAPIClient(): MockNetworkAPIClient {
@@ -83,6 +104,11 @@ export function createMockNetworkAPIClient(): MockNetworkAPIClient {
 
     // Aggregator links
     listAggregatorLinks: vi.fn(),
+
+    // Config rules
+    listConfigRules: vi.fn(),
+    getEffectiveRules: vi.fn(),
+    resolveIntegrationTrace: vi.fn(),
   };
   // Default: scoped client is the same mock, so spies see all calls.
   mock.withClientIdOverride.mockImplementation(() => mock);
