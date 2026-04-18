@@ -65,3 +65,39 @@ export function compactEffective(raw: EffectiveRuleResponse): CompactEffectiveRe
     directives,
   };
 }
+
+// ---- trace ----
+
+export interface CompactTraceStep extends Record<string, unknown> {
+  step?: string;
+  outcome?: string;
+  ruleId?: string;
+}
+
+export interface CompactTraceEliminated extends Record<string, unknown> {
+  acceptorId?: string;
+  reason?: string;
+  ruleId?: string;
+}
+
+export interface CompactTraceResult {
+  pair: { buyerId?: string; supplierId?: string };
+  resolved: Record<string, unknown> | undefined;
+  chosenPath: CompactTraceStep[];
+  eliminated: CompactTraceEliminated[];
+}
+
+export function compactTrace(raw: DecisionTraceResponse): CompactTraceResult {
+  const trace = asRecord(raw.trace) ?? {};
+  const chosenPath = asArray(trace.chosenPath).map((s) => ({ ...(asRecord(s) ?? {}) }));
+  const eliminated = asArray(trace.eliminated ?? trace.eliminatedPaths).map(
+    (s) => ({ ...(asRecord(s) ?? {}) }),
+  );
+
+  return {
+    pair: { buyerId: raw.buyerId, supplierId: raw.supplierId },
+    resolved: asRecord(raw.resolved),
+    chosenPath,
+    eliminated,
+  };
+}

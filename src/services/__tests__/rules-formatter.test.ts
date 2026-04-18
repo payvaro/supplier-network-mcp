@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compactEffective } from '../rules-formatter.js';
+import { compactEffective, compactTrace } from '../rules-formatter.js';
 
 describe('compactEffective', () => {
   it('maps a single-directive response with one winner and one loser', () => {
@@ -74,5 +74,58 @@ describe('compactEffective', () => {
     expect(out.directives[0].contributingSources[0]).toMatchObject({
       customField: 'keep-me',
     });
+  });
+});
+
+describe('compactTrace', () => {
+  it('maps resolved pair, chosen path, and eliminated alternatives', () => {
+    const raw = {
+      buyerId: 'BUY-IT-001',
+      supplierId: 'SUP-IT-001',
+      resolved: {
+        acceptorId: 'ACC-1',
+        integrationId: 'INT-1',
+        paymentType: 'CARD',
+      },
+      trace: {
+        chosenPath: [
+          { step: 'payment-type-filter', outcome: 'CARD allowed', ruleId: 'r-501' },
+          { step: 'acceptor-selection',  outcome: 'WEX wins',     ruleId: 'r-612' },
+        ],
+        eliminated: [
+          { acceptorId: 'ACC-2', reason: 'require-clear failed', ruleId: 'r-555' },
+        ],
+      },
+    };
+
+    const out = compactTrace(raw);
+
+    expect(out.pair).toEqual({ buyerId: 'BUY-IT-001', supplierId: 'SUP-IT-001' });
+    expect(out.resolved).toMatchObject({ acceptorId: 'ACC-1', paymentType: 'CARD' });
+    expect(out.chosenPath).toHaveLength(2);
+    expect(out.chosenPath[0].step).toBe('payment-type-filter');
+    expect(out.eliminated).toHaveLength(1);
+    expect(out.eliminated[0].reason).toBe('require-clear failed');
+  });
+
+  it('falls through to empty arrays when trace is missing', () => {
+    const raw = { buyerId: 'b', supplierId: 's', resolved: { acceptorId: 'A' } };
+    const out = compactTrace(raw);
+    expect(out.chosenPath).toEqual([]);
+    expect(out.eliminated).toEqual([]);
+    expect(out.resolved).toEqual({ acceptorId: 'A' });
+  });
+
+  it('tolerates alternate trace field name (eliminatedPaths)', () => {
+    const raw = {
+      buyerId: 'b',
+      supplierId: 's',
+      trace: {
+        eliminatedPaths: [{ acceptorId: 'ACC-X', reason: 'filtered' }],
+      },
+    };
+    const out = compactTrace(raw);
+    expect(out.eliminated).toHaveLength(1);
+    expect(out.eliminated[0].acceptorId).toBe('ACC-X');
   });
 });
