@@ -20,6 +20,7 @@ import {
   AnalyzeToolSchema,
   NotifySlackToolSchema,
   LookupClientToolSchema,
+  RulesToolSchema,
 } from "./schemas/index.js";
 
 // Import tool handlers
@@ -30,6 +31,7 @@ import { handleImports } from "./tools/imports.js";
 import { handleMatching } from "./tools/matching.js";
 import { handleAnalyze, handleNotifySlack } from "./tools/analysis.js";
 import { lookupClientId } from "./tools/clients.js";
+import { handleRules } from "./tools/rules.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
@@ -401,6 +403,79 @@ function createServer() {
           },
         },
         {
+          name: "rules",
+          description:
+            "Explore config rules across the hierarchy. Use when the user asks what rules exist for a buyer/supplier/scope, which rule wins for an entity, or why a buyer-supplier pair resolves to a specific integration.\n\nActions:\n- `list` — Browse config rules for a scope (requires `scopeType` + `scopeId`; scopes: BUYER, SUPPLIER, BUYER_LINK, NETWORK_PARTNER, ACCEPTOR, PAYMENT_RAIL). Paginated.\n- `effective` — Resolve the effective rule stack for an entity, with the hierarchy trace (requires `entityType` + `entityId`; entity types: SUPPLIER, BUYER, BUYER_LINK, NETWORK_PARTNER, AGGREGATOR).\n- `trace` — Explain why a buyer-supplier pair resolves to a particular acceptor/integration (requires `buyerId` + `supplierId`; optional: `paymentType`, `acceptorId`, `requireClear`).\n\n`format: \"compact\"` (default) returns a collapsed shape optimized for readability; `format: \"full\"` returns the raw API response.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["list", "effective", "trace"],
+                description: "The action to perform",
+              },
+              scopeType: {
+                type: "string",
+                enum: ["BUYER", "SUPPLIER", "BUYER_LINK", "NETWORK_PARTNER", "ACCEPTOR", "PAYMENT_RAIL"],
+                description: "Scope entity type (for list)",
+              },
+              scopeId: {
+                type: "string",
+                description: "Scope entity id (for list)",
+              },
+              pageSize: {
+                type: "number",
+                description: "Page size for list (1-100)",
+                default: 20,
+                minimum: 1,
+                maximum: 100,
+              },
+              cursor: {
+                type: "string",
+                description: "Pagination cursor for list",
+              },
+              entityType: {
+                type: "string",
+                enum: ["SUPPLIER", "BUYER", "BUYER_LINK", "NETWORK_PARTNER", "AGGREGATOR"],
+                description: "Entity type (for effective)",
+              },
+              entityId: {
+                type: "string",
+                description: "Entity id (for effective)",
+              },
+              buyerId: {
+                type: "string",
+                description: "Buyer id (for trace)",
+              },
+              supplierId: {
+                type: "string",
+                description: "Supplier id (for trace)",
+              },
+              paymentType: {
+                type: "string",
+                description: "Preferred payment type (for trace)",
+              },
+              acceptorId: {
+                type: "string",
+                description: "Preferred acceptor id (for trace)",
+              },
+              requireClear: {
+                type: "boolean",
+                description: "Require clear guard status (for trace)",
+              },
+              format: {
+                type: "string",
+                enum: ["compact", "full"],
+                description: "Output format (default compact)",
+                default: "compact",
+              },
+              asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
+            },
+            required: ["action"],
+          },
+        },
+        {
           name: "analyze",
           description:
             "Analyze the supplier network for health, coverage, and quality. Use when the user asks about network health, wants to find gaps or isolated suppliers, or needs an assessment of import data quality. For viewing specific supplier or buyer data, use `suppliers` or `buyers` instead.\n\nActions:\n- `connections` — Identify isolated nodes, network hubs, and suggest new connections\n- `relationships` — Assess relationship health, coverage gaps, or map network structure (requires `analysisType`)\n- `import_quality` — Post-upload validation, pre-import preview, or data quality scoring (requires `mode`)",
@@ -650,6 +725,11 @@ function createServer() {
         case "matching": {
           const params = MatchingToolSchema.parse(args);
           response = await handleMatching(params);
+          break;
+        }
+        case "rules": {
+          const params = RulesToolSchema.parse(args);
+          response = await handleRules(params);
           break;
         }
         case "analyze": {
