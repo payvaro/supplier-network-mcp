@@ -584,6 +584,40 @@ describe('api-client', () => {
       await expect(client.listBuyers()).rejects.toThrow(/NETWORK_CLIENT_ID|asClientId/);
     });
 
+    it('translates 400 "ID cannot be null or blank" as the same admin-scope issue', async () => {
+      const axiosError = {
+        response: {
+          status: 400,
+          data: { error: 'ID cannot be null or blank' },
+        },
+        message: 'Request failed',
+        isAxiosError: true,
+      };
+      mockAxiosInstance.get.mockRejectedValue(axiosError);
+      mockedAxios.isAxiosError.mockReturnValue(true);
+
+      await expect(client.listBuyers()).rejects.toThrow(/tenant scope/);
+      await expect(client.listBuyers()).rejects.toThrow(/asClientName|asClientId/);
+    });
+
+    it('does not hijack unrelated 400s when clientId is already set', async () => {
+      const clientWithId = new NetworkAPIClient('key', 'http://test.com', 'client-abc');
+      const axiosError = {
+        response: {
+          status: 400,
+          data: { error: 'Client ID is required' },
+        },
+        message: 'Request failed',
+        isAxiosError: true,
+      };
+      mockAxiosInstance.get.mockRejectedValue(axiosError);
+      mockedAxios.isAxiosError.mockReturnValue(true);
+
+      // With clientId already configured, the translation should NOT kick in —
+      // the problem is something else upstream.
+      await expect(clientWithId.listBuyers()).rejects.toThrow(/Bad request/);
+    });
+
     it('handles 500 server error', async () => {
       const axiosError = {
         response: {

@@ -584,12 +584,17 @@ export type GetMatchingJobInput = z.infer<typeof GetMatchingJobSchema>;
 export type ListMatchCandidatesInput = z.infer<typeof ListMatchCandidatesSchema>;
 export type ListStagedMatchesInput = z.infer<typeof ListStagedMatchesSchema>;
 
+// Environments supported by the client config lookup. 'local' targets the
+// localstack-seeded payvaro-configuration-local bucket; 'dev' and 'prod' hit
+// the corresponding real S3 buckets.
+export const CLIENT_LOOKUP_ENVIRONMENTS = ["local", "dev", "prod"] as const;
+
 // Client lookup schema (single-name resolution, used internally)
 export const LookupClientIdSchema = z.object({
   name: z.string()
     .min(1, "Client name cannot be empty")
     .describe("Human-friendly client name to look up (e.g. 'Comet Electric', 'Acumatica')"),
-  environment: z.enum(["dev", "prod"])
+  environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS)
     .default("dev")
     .describe("Target environment to look up the client ID for"),
 }).strict();
@@ -602,8 +607,8 @@ export const LookupClientToolSchema = z.object({
     .describe("'resolve' matches a name to its UUID. 'list' returns all known clients for browsing."),
   name: z.string().min(1).optional()
     .describe("Client name to resolve (required for 'resolve' action)"),
-  environment: z.enum(["dev", "prod"]).default("dev")
-    .describe("Target environment (defaults to 'dev')"),
+  environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS).default("dev")
+    .describe("Target environment: 'local' (localstack), 'dev', or 'prod'. Defaults to 'dev'."),
 }).refine(
   (data) => data.action !== "resolve" || !!data.name,
   { message: "The 'resolve' action requires 'name'." },
