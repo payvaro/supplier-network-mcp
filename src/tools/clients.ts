@@ -1,13 +1,35 @@
 import { getClientLookupService } from "../services/client-lookup.js";
-import type { LookupClientIdInput } from "../schemas/index.js";
+import type { LookupClientToolInput } from "../schemas/index.js";
 
-export async function lookupClientId(params: LookupClientIdInput) {
+export async function lookupClientId(params: LookupClientToolInput) {
+  const service = getClientLookupService();
+  const environment = params.environment;
+
   try {
-    const service = getClientLookupService();
-    const result = await service.lookupByName(params.name, params.environment);
+    if (params.action === "list") {
+      const names = await service.getAllClientNames(environment);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              `# Clients in \`${environment}\``,
+              "",
+              `**Total:** ${names.length}`,
+              "",
+              ...names.map(n => `- ${n}`),
+              "",
+              "Use `lookup_client` with `action: resolve` to get a UUID, or pass `asClientName=\"<name>\"` to any admin-mode tool.",
+            ].join("\n"),
+          },
+        ],
+      };
+    }
+
+    const result = await service.lookupByName(params.name!, environment);
 
     if (!result) {
-      const availableNames = await service.getAllClientNames(params.environment);
+      const availableNames = await service.getAllClientNames(environment);
       return {
         content: [
           {
@@ -15,7 +37,7 @@ export async function lookupClientId(params: LookupClientIdInput) {
             text: [
               `# Client Lookup: "${params.name}"`,
               "",
-              `**No match found** in **${params.environment}** environment.`,
+              `**No match found** in **${environment}** environment.`,
               "",
               "## Available Clients",
               ...availableNames.map(n => `- ${n}`),
@@ -35,18 +57,19 @@ export async function lookupClientId(params: LookupClientIdInput) {
             "",
             `**Matched:** ${result.name}`,
             `**Client ID:** \`${result.clientId}\``,
-            `**Environment:** ${params.environment}`,
+            `**Environment:** ${environment}`,
           ].join("\n"),
         },
       ],
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const label = params.action === "list" ? "list clients" : `look up client "${params.name}"`;
     return {
       content: [
         {
           type: "text" as const,
-          text: `# Error Looking Up Client\n\nFailed to look up client "${params.name}": ${message}`,
+          text: `# Error\n\nFailed to ${label}: ${message}`,
         },
       ],
       isError: true,
