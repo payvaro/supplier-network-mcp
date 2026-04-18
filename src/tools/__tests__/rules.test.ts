@@ -36,4 +36,204 @@ describe('rules tool', () => {
       expect(result.content[0].text).toContain('r-1');
     });
   });
+
+  describe('action: effective', () => {
+    const rawEffective = {
+      entityType: 'BUYER',
+      entityId: 'BUY-IT-001',
+      directives: [
+        {
+          directiveType: 'NETTING',
+          effectiveRule: { ruleId: 'r-123', scopeType: 'BUYER', scopeId: 'BUY-IT-001', value: 'ENABLED' },
+          contributingSources: [
+            { level: 'BUYER', ruleId: 'r-123', value: 'ENABLED', applied: true },
+          ],
+        },
+      ],
+    };
+
+    it('returns compact shape by default', async () => {
+      mockClient.getEffectiveRules.mockResolvedValue(rawEffective);
+
+      const result = await handleRules({
+        action: 'effective',
+        entityType: 'BUYER',
+        entityId: 'BUY-IT-001',
+        pageSize: 20,
+        format: 'compact',
+      });
+
+      expect(mockClient.getEffectiveRules).toHaveBeenCalledWith('BUYER', 'BUY-IT-001');
+      expect(result.structuredContent).toMatchObject({
+        entity: { type: 'BUYER', id: 'BUY-IT-001' },
+      });
+      expect(result.structuredContent?.directives).toBeInstanceOf(Array);
+    });
+
+    it('returns raw shape when format=full', async () => {
+      mockClient.getEffectiveRules.mockResolvedValue(rawEffective);
+
+      const result = await handleRules({
+        action: 'effective',
+        entityType: 'BUYER',
+        entityId: 'BUY-IT-001',
+        pageSize: 20,
+        format: 'full',
+      });
+
+      expect(result.structuredContent).toEqual(rawEffective);
+    });
+
+    it('surfaces 404 from API with actionable error text', async () => {
+      mockClient.getEffectiveRules.mockRejectedValue(
+        new Error('Request failed with status code 404'),
+      );
+
+      const result = await handleRules({
+        action: 'effective',
+        entityType: 'BUYER',
+        entityId: 'missing',
+        pageSize: 20,
+        format: 'compact',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('Not found');
+    });
+  });
+
+  describe('action: trace', () => {
+    const rawTrace = {
+      buyerId: 'BUY-1',
+      supplierId: 'SUP-1',
+      resolved: { acceptorId: 'ACC-1', paymentType: 'CARD' },
+      trace: {
+        chosenPath: [{ step: 'acceptor-selection', outcome: 'WEX wins', ruleId: 'r-612' }],
+        eliminated: [{ acceptorId: 'ACC-2', reason: 'require-clear failed', ruleId: 'r-555' }],
+      },
+    };
+
+    it('passes optional filters through to the client and returns compact shape', async () => {
+      mockClient.resolveIntegrationTrace.mockResolvedValue(rawTrace);
+
+      const result = await handleRules({
+        action: 'trace',
+        buyerId: 'BUY-1',
+        supplierId: 'SUP-1',
+        paymentType: 'CARD',
+        acceptorId: 'ACC-1',
+        requireClear: true,
+        pageSize: 20,
+        format: 'compact',
+      });
+
+      expect(mockClient.resolveIntegrationTrace).toHaveBeenCalledWith({
+        buyerId: 'BUY-1',
+        supplierId: 'SUP-1',
+        paymentType: 'CARD',
+        acceptorId: 'ACC-1',
+        requireClear: true,
+      });
+      expect(result.structuredContent).toMatchObject({
+        pair: { buyerId: 'BUY-1', supplierId: 'SUP-1' },
+      });
+      expect(result.structuredContent?.chosenPath).toHaveLength(1);
+      expect(result.structuredContent?.eliminated).toHaveLength(1);
+    });
+
+    it('returns raw shape when format=full', async () => {
+      mockClient.resolveIntegrationTrace.mockResolvedValue(rawTrace);
+
+      const result = await handleRules({
+        action: 'trace',
+        buyerId: 'BUY-1',
+        supplierId: 'SUP-1',
+        pageSize: 20,
+        format: 'full',
+      });
+
+      expect(result.structuredContent).toEqual(rawTrace);
+    });
+
+    it('surfaces API errors', async () => {
+      mockClient.resolveIntegrationTrace.mockRejectedValue(
+        new Error('Request failed with status code 500'),
+      );
+
+      const result = await handleRules({
+        action: 'trace',
+        buyerId: 'BUY-1',
+        supplierId: 'SUP-1',
+        pageSize: 20,
+        format: 'compact',
+      });
+
+      expect(result.isError).toBe(true);
+    });
+  });
+
+  describe('handleRules admin override (asClientId)', () => {
+    const ORIG = process.env.NETWORK_ADMIN_MODE;
+    afterEach(() => {
+      if (ORIG === undefined) delete process.env.NETWORK_ADMIN_MODE;
+      else process.env.NETWORK_ADMIN_MODE = ORIG;
+    });
+
+    it('rejects asClientId when admin mode is disabled', async () => {
+      delete process.env.NETWORK_ADMIN_MODE;
+
+      const result = await handleRules({
+        action: 'list',
+        scopeType: 'BUYER',
+        scopeId: 'BUY-1',
+        pageSize: 20,
+        format: 'compact',
+        asClientId: 'client-abc',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain('NETWORK_ADMIN_MODE=true');
+      expect(mockClient.withClientIdOverride).not.toHaveBeenCalled();
+      expect(mockClient.listConfigRules).not.toHaveBeenCalled();
+    });
+
+    it('invokes withClientIdOverride and dispatches when admin mode is enabled', async () => {
+      process.env.NETWORK_ADMIN_MODE = 'true';
+      mockClient.listConfigRules.mockResolvedValue({
+        items: [],
+        pagination: { count: 0, pageSize: 20, hasMore: false, nextCursor: null },
+      });
+
+      const result = await handleRules({
+        action: 'list',
+        scopeType: 'BUYER',
+        scopeId: 'BUY-1',
+        pageSize: 20,
+        format: 'compact',
+        asClientId: 'client-abc',
+      });
+
+      expect(mockClient.withClientIdOverride).toHaveBeenCalledWith('client-abc');
+      expect(mockClient.listConfigRules).toHaveBeenCalled();
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('does not invoke withClientIdOverride when asClientId is omitted', async () => {
+      process.env.NETWORK_ADMIN_MODE = 'true';
+      mockClient.listConfigRules.mockResolvedValue({
+        items: [],
+        pagination: { count: 0, pageSize: 20, hasMore: false, nextCursor: null },
+      });
+
+      await handleRules({
+        action: 'list',
+        scopeType: 'BUYER',
+        scopeId: 'BUY-1',
+        pageSize: 20,
+        format: 'compact',
+      });
+
+      expect(mockClient.withClientIdOverride).not.toHaveBeenCalled();
+    });
+  });
 });
