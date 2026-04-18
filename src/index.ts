@@ -43,6 +43,15 @@ const asClientIdProperty = {
     "Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.",
 } as const;
 
+// Admin-only convenience: the dispatcher resolves this to a UUID via the S3
+// client config (same source as lookup_client) before issuing the request.
+// Mutually exclusive with asClientId.
+const asClientNameProperty = {
+  type: "string",
+  description:
+    "Admin-only: resolve a client by name (e.g. 'Comet Electric') and use its UUID as the x-client-id header. Requires NETWORK_ADMIN_MODE=true. Mutually exclusive with asClientId. Use lookup_client with action 'list' to see available names.",
+} as const;
+
 /**
  * Create and configure the MCP server
  */
@@ -122,6 +131,7 @@ function createServer() {
                 maximum: 100,
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
           },
         },
@@ -169,6 +179,7 @@ function createServer() {
                 description: "Pagination cursor for fetching the next page of results",
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -243,6 +254,7 @@ function createServer() {
                 },
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -276,6 +288,7 @@ function createServer() {
                 description: "Reference key for the buyer-supplier relationship (for link)",
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -329,6 +342,7 @@ function createServer() {
                 description: "Scope to suppliers linked to this buyer (for validate)",
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -381,6 +395,7 @@ function createServer() {
                 description: "Pagination cursor for next page",
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -450,6 +465,7 @@ function createServer() {
                 required: ["from", "to"],
               },
               asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
             },
             required: ["action"],
           },
@@ -559,23 +575,28 @@ function createServer() {
         {
           name: "lookup_client",
           description:
-            "Resolve a human-friendly client name to its UUID. Use when the user refers to a client by name (e.g., \"Comet Electric\") and you need the client ID for other tools. Fuzzy matches against the configuration store.\n\nExample: look up \"Comet Electric\" to get their client UUID for use with `buyers` or `relationships`.",
+            "Browse or resolve clients from the S3 configuration store. Use action 'list' to see every client in an environment, or 'resolve' (default) to fuzzy-match a name to its UUID.\n\nActions:\n- `resolve` — Match a single `name` to its UUID (e.g. \"Comet Electric\" → `b5f3…`). Use before passing `asClientId` to another tool, or pass `asClientName` directly to skip this step.\n- `list` — Return all known client names. Useful when admins want to pick a tenant without guessing.",
           inputSchema: {
             type: "object",
             properties: {
+              action: {
+                type: "string",
+                enum: ["resolve", "list"],
+                description: "'resolve' matches a name to its UUID (default). 'list' returns all clients for browsing.",
+                default: "resolve",
+              },
               name: {
                 type: "string",
                 description:
-                  "Human-friendly client name to search for (e.g. 'Comet Electric', 'Acumatica')",
+                  "Client name to resolve (required when action is 'resolve').",
               },
               environment: {
                 type: "string",
-                enum: ["dev", "prod"],
-                description: "Target environment (default: dev)",
+                enum: ["local", "dev", "prod"],
+                description: "Target environment: 'local' (localstack), 'dev', or 'prod'. Default: dev.",
                 default: "dev",
               },
             },
-            required: ["name"],
           },
         },
       ],

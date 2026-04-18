@@ -15,8 +15,9 @@ import type {
   BuyersToolInput,
 } from "../schemas/index.js";
 import type { BuyerListResult, SupplierListResult } from "../types.js";
-import { ResponseFormat, isAdminMode } from "../constants.js";
-import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
+import { ResponseFormat } from "../constants.js";
+import { createActionableError } from "../errors.js";
+import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 
 /**
  * List all buyers
@@ -381,12 +382,10 @@ export async function createBuyerLink(params: CreateBuyerLinkInput, clientOverri
  */
 export async function handleBuyers(params: BuyersToolInput) {
   try {
-    if (params.asClientId && !isAdminMode()) {
-      const err = createAdminOverrideRejectedError('buyers');
-      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
-    }
-    const scopedClient = params.asClientId
-      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+    const scope = await resolveAdminScope(params, 'buyers');
+    if (isAdminScopeRejection(scope)) return scope;
+    const scopedClient = scope.clientId
+      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
       : undefined;
 
     switch (params.action) {

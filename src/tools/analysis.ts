@@ -2,7 +2,7 @@ import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js
 import { analyzeNetwork } from "../services/network-analyzer.js";
 import { postToSlack, postGeneralMessage, normalizeAnalysisResult } from "../services/slack-notifier.js";
 import { formatOutput, createErrorResponse } from "../services/formatter.js";
-import { DEFAULT_SLACK_WEBHOOK_URL, ResponseFormat, isAdminMode } from "../constants.js";
+import { DEFAULT_SLACK_WEBHOOK_URL, ResponseFormat } from "../constants.js";
 import type {
   NetworkAnalysisInput,
   SlackNotificationInput,
@@ -12,7 +12,8 @@ import type {
 } from "../schemas/index.js";
 import type { NetworkAnalysisResult } from "../types.js";
 import { analyzeImport, analyzeRelationships } from "./workflows.js";
-import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
+import { createActionableError } from "../errors.js";
+import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 
 /**
  * Analyze network connections
@@ -266,12 +267,10 @@ export async function notifySlack(params: SlackNotificationInput) {
  */
 export async function handleAnalyze(params: AnalyzeToolInput) {
   try {
-    if (params.asClientId && !isAdminMode()) {
-      const err = createAdminOverrideRejectedError('analyze');
-      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
-    }
-    const scopedClient = params.asClientId
-      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+    const scope = await resolveAdminScope(params, 'analyze');
+    if (isAdminScopeRejection(scope)) return scope;
+    const scopedClient = scope.clientId
+      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
       : undefined;
 
     switch (params.action) {
