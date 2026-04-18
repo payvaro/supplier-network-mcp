@@ -17,7 +17,15 @@ export class ClientLookupService {
   private cache: Map<string, CacheEntry> = new Map();
 
   constructor() {
-    this.s3 = new S3Client({});
+    // Honor an explicit endpoint override (localstack: http://localhost:4566)
+    // when set via AWS_ENDPOINT_URL or AWS_ENDPOINT_URL_S3. Localstack requires
+    // path-style addressing since it doesn't serve virtual-hosted-style buckets.
+    const endpoint = process.env.AWS_ENDPOINT_URL_S3 ?? process.env.AWS_ENDPOINT_URL;
+    this.s3 = new S3Client(
+      endpoint
+        ? { endpoint, forcePathStyle: true, region: process.env.AWS_REGION ?? "us-west-2" }
+        : {},
+    );
   }
 
   async lookupByName(name: string, environment = "dev"): Promise<ClientLookupResult | null> {
