@@ -4,9 +4,10 @@ import {
   listMatchCandidatesTool,
   listStagedMatchesTool,
 } from "./workflows.js";
-import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
-import { ResponseFormat, isAdminMode } from "../constants.js";
+import { createActionableError } from "../errors.js";
+import { ResponseFormat } from "../constants.js";
 import { getNetworkAPIClient } from "../services/api-client.js";
+import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 import type { MatchingToolInput } from "../schemas/index.js";
 
 /**
@@ -14,12 +15,10 @@ import type { MatchingToolInput } from "../schemas/index.js";
  */
 export async function handleMatching(params: MatchingToolInput) {
   try {
-    if (params.asClientId && !isAdminMode()) {
-      const err = createAdminOverrideRejectedError('matching');
-      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
-    }
-    const scopedClient = params.asClientId
-      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+    const scope = await resolveAdminScope(params, 'matching');
+    if (isAdminScopeRejection(scope)) return scope;
+    const scopedClient = scope.clientId
+      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
       : undefined;
 
     switch (params.action) {

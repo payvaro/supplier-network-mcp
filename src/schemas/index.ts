@@ -358,6 +358,12 @@ export const ListStagedMatchesSchema = z.object({
 const AsClientIdField = z.string().min(1).optional()
   .describe("Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.");
 
+// Admin-only dynamic resolution: resolve a client name via the S3 client
+// config (same source as lookup_client) and use the resulting UUID as the
+// x-client-id header. Mutually exclusive with asClientId.
+const AsClientNameField = z.string().min(1).optional()
+  .describe("Admin-only: resolve a client by human-friendly name (e.g. 'Comet Electric') and use its UUID as the x-client-id header for this request. Requires NETWORK_ADMIN_MODE=true. Mutually exclusive with asClientId.");
+
 export const SearchToolSchema = z.object({
   name: z.string().optional().describe("Supplier name or partial name to search for"),
   address: AddressSchema.optional(),
@@ -367,6 +373,7 @@ export const SearchToolSchema = z.object({
   maxResults: z.number().int().min(1).max(100).default(10)
     .describe("Maximum number of results to return (1-100)"),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => data.name || data.address || data.email,
   { message: "At least one search criterion must be provided (name, address, or email)" }
@@ -381,6 +388,7 @@ export const SuppliersToolSchema = z.object({
   pageSize: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if ((data.action === 'get' || data.action === 'history') && !data.id) return false;
@@ -414,6 +422,7 @@ export const BuyersToolSchema = z.object({
     type: z.enum(["PRIMARY", "SECONDARY", "OTHER"]).optional(),
   })).optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (data.action === 'get' && !data.id && !data.clientId) return false;
@@ -434,6 +443,7 @@ export const RelationshipsToolSchema = z.object({
   buyerSupplierRefId: z.string().optional(),
   buyerRefKey: z.string().optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (data.action === 'for_buyer' && !data.buyerId) return false;
@@ -460,6 +470,7 @@ export const ImportsToolSchema = z.object({
   }).optional(),
   buyerId: z.string().optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (data.action === 'upload' && !data.filePath) return false;
@@ -476,6 +487,7 @@ export const MatchingToolSchema = z.object({
   pageSize: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (['job_detail', 'candidates', 'staged'].includes(data.action) && !data.jobId) return false;
@@ -499,6 +511,7 @@ export const AnalyzeToolSchema = z.object({
     to: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format"),
   }).optional(),
   asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (data.action === 'relationships' && !data.analysisType) return false;
@@ -571,7 +584,7 @@ export type GetMatchingJobInput = z.infer<typeof GetMatchingJobSchema>;
 export type ListMatchCandidatesInput = z.infer<typeof ListMatchCandidatesSchema>;
 export type ListStagedMatchesInput = z.infer<typeof ListStagedMatchesSchema>;
 
-// Client lookup schema
+// Client lookup schema (single-name resolution, used internally)
 export const LookupClientIdSchema = z.object({
   name: z.string()
     .min(1, "Client name cannot be empty")
@@ -583,5 +596,16 @@ export const LookupClientIdSchema = z.object({
 
 export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;
 
-export const LookupClientToolSchema = LookupClientIdSchema;
+// Public lookup_client tool schema — supports resolve (by name) and list.
+export const LookupClientToolSchema = z.object({
+  action: z.enum(["resolve", "list"]).default("resolve")
+    .describe("'resolve' matches a name to its UUID. 'list' returns all known clients for browsing."),
+  name: z.string().min(1).optional()
+    .describe("Client name to resolve (required for 'resolve' action)"),
+  environment: z.enum(["dev", "prod"]).default("dev")
+    .describe("Target environment (defaults to 'dev')"),
+}).refine(
+  (data) => data.action !== "resolve" || !!data.name,
+  { message: "The 'resolve' action requires 'name'." },
+);
 export type LookupClientToolInput = z.infer<typeof LookupClientToolSchema>;

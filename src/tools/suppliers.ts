@@ -18,8 +18,9 @@ import type {
   SearchToolInput,
 } from "../schemas/index.js";
 import type { SearchResult, SupplierListResult } from "../types.js";
-import { ResponseFormat, HistoryFormat, isAdminMode } from "../constants.js";
-import { createActionableError, createAdminOverrideRejectedError } from "../errors.js";
+import { ResponseFormat, HistoryFormat } from "../constants.js";
+import { createActionableError } from "../errors.js";
+import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 
 /**
  * Search for suppliers with fuzzy matching
@@ -277,12 +278,10 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput, client
  */
 export async function handleSuppliers(params: SuppliersToolInput) {
   try {
-    if (params.asClientId && !isAdminMode()) {
-      const err = createAdminOverrideRejectedError('suppliers');
-      return { isError: true, content: [{ type: "text" as const, text: err.text }] };
-    }
-    const scopedClient = params.asClientId
-      ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+    const scope = await resolveAdminScope(params, 'suppliers');
+    if (isAdminScopeRejection(scope)) return scope;
+    const scopedClient = scope.clientId
+      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
       : undefined;
 
     switch (params.action) {
@@ -333,12 +332,10 @@ export async function handleSuppliers(params: SuppliersToolInput) {
  * Dispatch wrapper for the consolidated search tool (admin-override aware)
  */
 export async function handleSearch(params: SearchToolInput) {
-  if (params.asClientId && !isAdminMode()) {
-    const err = createAdminOverrideRejectedError('search');
-    return { isError: true, content: [{ type: "text" as const, text: err.text }] };
-  }
-  const scopedClient = params.asClientId
-    ? getNetworkAPIClient().withClientIdOverride(params.asClientId)
+  const scope = await resolveAdminScope(params, 'search');
+  if (isAdminScopeRejection(scope)) return scope;
+  const scopedClient = scope.clientId
+    ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
     : undefined;
 
   return await searchSuppliers({
