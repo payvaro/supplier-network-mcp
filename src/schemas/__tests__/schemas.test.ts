@@ -18,6 +18,7 @@ import {
   AddressSchema,
   ResponseFormatSchema,
   HistoryFormatSchema,
+  RulesToolSchema,
   LookupClientIdSchema,
   SearchToolSchema,
   SuppliersToolSchema,
@@ -895,6 +896,60 @@ describe('consolidated schemas', () => {
     it('accepts explicit environment', () => {
       const result = LookupClientToolSchema.safeParse({ name: 'Comet Electric', environment: 'prod' });
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('RulesToolSchema', () => {
+    it('accepts a valid list request', () => {
+      const result = RulesToolSchema.safeParse({
+        action: 'list',
+        scopeType: 'BUYER',
+        scopeId: 'BUY-IT-001',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects list without scopeType+scopeId', () => {
+      const result = RulesToolSchema.safeParse({ action: 'list' });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a valid effective request', () => {
+      const result = RulesToolSchema.safeParse({
+        action: 'effective',
+        entityType: 'BUYER',
+        entityId: 'BUY-IT-001',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects effective without entityType+entityId', () => {
+      const result = RulesToolSchema.safeParse({ action: 'effective' });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a valid trace request', () => {
+      const result = RulesToolSchema.safeParse({
+        action: 'trace',
+        buyerId: 'BUY-IT-001',
+        supplierId: 'SUP-IT-001',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects trace missing buyerId', () => {
+      const result = RulesToolSchema.safeParse({ action: 'trace', supplierId: 'SUP-IT-001' });
+      expect(result.success).toBe(false);
+    });
+
+    it('defaults format to "compact"', () => {
+      const result = RulesToolSchema.safeParse({
+        action: 'effective',
+        entityType: 'BUYER',
+        entityId: 'BUY-IT-001',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.format).toBe('compact');
     });
   });
 });
