@@ -2,78 +2,100 @@ import { describe, it, expect } from 'vitest';
 import { compactEffective, compactTrace } from '../rules-formatter.js';
 
 describe('compactEffective', () => {
-  it('maps a single-directive response with one winner and one loser', () => {
-    const raw = {
-      entityType: 'BUYER',
-      entityId: 'BUY-IT-001',
-      directives: [
-        {
-          directiveType: 'NETTING',
-          effectiveRule: {
-            ruleId: 'r-123',
-            scopeType: 'BUYER',
-            scopeId: 'BUY-IT-001',
-            value: 'ENABLED',
+  // Fixture captured from a running local network service on 2026-04-18
+  // (GET /api/config-rules/effective?entityType=BUYER&entityId=BUY-IT-005 with
+  // a single NETTING rule created at the BUYER scope).
+  const realResponse = {
+    targetEntityType: 'BUYER',
+    targetEntityId: 'BUY-IT-005',
+    hierarchyLevels: [
+      {
+        scope: 'BUYER',
+        entityId: 'BUY-IT-005',
+        entityName: 'Campus Starbucks #505',
+        rules: [
+          {
+            configRuleId: 'ac7217d0-0738-4b35-bd78-ebc0ba860424',
+            ruleType: 'NETTING',
+            ruleKey: 'netting',
+            ruleValue: '50.00',
+            params: { maxAmount: 100 },
+            acceptorId: null,
+            paymentRailId: null,
+            status: 'ACTIVE',
+            createdAt: '2026-04-18T17:21:21.757690Z',
+            updatedAt: '2026-04-18T17:21:21.757690Z',
           },
-          contributingSources: [
-            {
-              level: 'BUYER',
-              ruleId: 'r-123',
-              value: 'ENABLED',
-              applied: true,
-            },
-            {
-              level: 'NETWORK_PARTNER',
-              ruleId: 'r-044',
-              value: 'DISABLED',
-              applied: false,
-              reason: 'overridden by BUYER',
-            },
-          ],
-        },
-      ],
-    };
+        ],
+      },
+    ],
+    effectiveRules: [
+      {
+        ruleType: 'NETTING',
+        ruleKey: 'netting',
+        effectiveValue: '50.00',
+        mergeStrategy: 'MOST_SPECIFIC_WINS',
+        contributingRuleIds: ['ac7217d0-0738-4b35-bd78-ebc0ba860424'],
+        explanation: 'Scope BUYER wins (directiveMultiplier=1.0). Effective netting: 50.00 basis points.',
+      },
+    ],
+  };
 
-    const out = compactEffective(raw);
+  it('maps the real API shape: entity, effective summary, and hierarchy', () => {
+    const out = compactEffective(realResponse);
 
-    expect(out.entity).toEqual({ type: 'BUYER', id: 'BUY-IT-001' });
-    expect(out.directives).toHaveLength(1);
-    expect(out.directives[0].directiveType).toBe('NETTING');
-    expect(out.directives[0].winner).toEqual({
-      ruleId: 'r-123',
-      scopeType: 'BUYER',
-      scopeId: 'BUY-IT-001',
-      value: 'ENABLED',
+    expect(out.entity).toEqual({ type: 'BUYER', id: 'BUY-IT-005' });
+
+    expect(out.effective).toHaveLength(1);
+    expect(out.effective[0]).toEqual({
+      ruleType: 'NETTING',
+      ruleKey: 'netting',
+      effectiveValue: '50.00',
+      mergeStrategy: 'MOST_SPECIFIC_WINS',
+      explanation: 'Scope BUYER wins (directiveMultiplier=1.0). Effective netting: 50.00 basis points.',
+      contributingRuleIds: ['ac7217d0-0738-4b35-bd78-ebc0ba860424'],
     });
-    expect(out.directives[0].contributingSources).toHaveLength(2);
-    expect(out.directives[0].contributingSources[1].applied).toBe(false);
+
+    expect(out.hierarchy).toHaveLength(1);
+    expect(out.hierarchy[0]).toMatchObject({
+      scope: 'BUYER',
+      entityId: 'BUY-IT-005',
+      entityName: 'Campus Starbucks #505',
+    });
+    expect(out.hierarchy[0].rules).toHaveLength(1);
+    expect(out.hierarchy[0].rules[0]).toMatchObject({
+      configRuleId: 'ac7217d0-0738-4b35-bd78-ebc0ba860424',
+      ruleType: 'NETTING',
+      ruleKey: 'netting',
+      ruleValue: '50.00',
+      status: 'ACTIVE',
+    });
   });
 
-  it('falls through to raw shape when directives are missing', () => {
-    const raw = { entityType: 'BUYER', entityId: 'BUY-IT-001' };
+  it('falls through to empty arrays when hierarchyLevels and effectiveRules are missing', () => {
+    const raw = { targetEntityType: 'BUYER', targetEntityId: 'BUY-IT-005' };
     const out = compactEffective(raw);
-    expect(out.directives).toEqual([]);
+    expect(out.hierarchy).toEqual([]);
+    expect(out.effective).toEqual([]);
+    expect(out.entity).toEqual({ type: 'BUYER', id: 'BUY-IT-005' });
   });
 
-  it('preserves unknown fields on contributing sources', () => {
+  it('tolerates empty rule arrays inside a hierarchy level', () => {
     const raw = {
-      entityType: 'BUYER',
-      entityId: 'BUY-IT-001',
-      directives: [
-        {
-          directiveType: 'FEE',
-          effectiveRule: { ruleId: 'r-1' },
-          contributingSources: [
-            { level: 'BUYER', ruleId: 'r-1', applied: true, customField: 'keep-me' },
-          ],
-        },
-      ],
+      targetEntityType: 'BUYER',
+      targetEntityId: 'BUY-IT-005',
+      hierarchyLevels: [{ scope: 'BUYER', entityId: 'BUY-IT-005', entityName: 'X', rules: [] }],
+      effectiveRules: [],
     };
-
     const out = compactEffective(raw);
-    expect(out.directives[0].contributingSources[0]).toMatchObject({
-      customField: 'keep-me',
-    });
+    expect(out.hierarchy).toHaveLength(1);
+    expect(out.hierarchy[0].rules).toEqual([]);
+  });
+
+  it('falls back to legacy entityType/entityId if targetEntity* are absent', () => {
+    const raw = { entityType: 'BUYER', entityId: 'BUY-IT-005' };
+    const out = compactEffective(raw);
+    expect(out.entity).toEqual({ type: 'BUYER', id: 'BUY-IT-005' });
   });
 });
 

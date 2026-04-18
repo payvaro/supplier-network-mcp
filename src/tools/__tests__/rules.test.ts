@@ -39,15 +39,32 @@ describe('rules tool', () => {
 
   describe('action: effective', () => {
     const rawEffective = {
-      entityType: 'BUYER',
-      entityId: 'BUY-IT-001',
-      directives: [
+      targetEntityType: 'BUYER',
+      targetEntityId: 'BUY-IT-001',
+      hierarchyLevels: [
         {
-          directiveType: 'NETTING',
-          effectiveRule: { ruleId: 'r-123', scopeType: 'BUYER', scopeId: 'BUY-IT-001', value: 'ENABLED' },
-          contributingSources: [
-            { level: 'BUYER', ruleId: 'r-123', value: 'ENABLED', applied: true },
+          scope: 'BUYER',
+          entityId: 'BUY-IT-001',
+          entityName: 'Example Buyer',
+          rules: [
+            {
+              configRuleId: 'r-123',
+              ruleType: 'NETTING',
+              ruleKey: 'netting',
+              ruleValue: '50.00',
+              status: 'ACTIVE',
+            },
           ],
+        },
+      ],
+      effectiveRules: [
+        {
+          ruleType: 'NETTING',
+          ruleKey: 'netting',
+          effectiveValue: '50.00',
+          mergeStrategy: 'MOST_SPECIFIC_WINS',
+          contributingRuleIds: ['r-123'],
+          explanation: 'Scope BUYER wins',
         },
       ],
     };
@@ -67,7 +84,8 @@ describe('rules tool', () => {
       expect(result.structuredContent).toMatchObject({
         entity: { type: 'BUYER', id: 'BUY-IT-001' },
       });
-      expect(result.structuredContent?.directives).toBeInstanceOf(Array);
+      expect(result.structuredContent?.effective).toBeInstanceOf(Array);
+      expect(result.structuredContent?.hierarchy).toBeInstanceOf(Array);
     });
 
     it('returns raw shape when format=full', async () => {
