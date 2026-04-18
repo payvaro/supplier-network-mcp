@@ -368,6 +368,29 @@ export class NetworkAPIClient {
   }
 
   /**
+   * List config rules for a given scope (admin endpoint).
+   * scopeType ∈ BUYER | SUPPLIER | BUYER_LINK | NETWORK_PARTNER | ACCEPTOR | PAYMENT_RAIL.
+   */
+  async listConfigRules(
+    scopeType: string,
+    scopeId: string,
+    pageSize: number = 20,
+    cursor?: string,
+  ): Promise<import('../types.js').ConfigRuleListResponse> {
+    try {
+      const params: Record<string, unknown> = { scopeType, scopeId, pageSize };
+      if (cursor) params.cursor = cursor;
+      const response = await this.client.get<import('../types.js').ConfigRuleListResponse>(
+        '/api/admin/config-rules',
+        { params },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * List buyers (first page only)
    */
   async listBuyers(includeLinks: boolean = false): Promise<Buyer[]> {
