@@ -391,6 +391,55 @@ export class NetworkAPIClient {
   }
 
   /**
+   * Resolve the effective rule stack for a target entity by walking the
+   * configuration hierarchy (entity → buyer-link → buyer → network-partner → global).
+   */
+  async getEffectiveRules(
+    entityType: string,
+    entityId: string,
+  ): Promise<import('../types.js').EffectiveRuleResponse> {
+    try {
+      const response = await this.client.get<import('../types.js').EffectiveRuleResponse>(
+        '/api/config-rules/effective',
+        { params: { entityType, entityId } },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Resolve the best integration for a buyer-supplier pair, with includeTrace=true
+   * so the caller gets the full decision trace (chosen path + eliminated alternatives).
+   */
+  async resolveIntegrationTrace(opts: {
+    buyerId: string;
+    supplierId: string;
+    paymentType?: string;
+    acceptorId?: string;
+    requireClear?: boolean;
+  }): Promise<import('../types.js').DecisionTraceResponse> {
+    try {
+      const params: Record<string, unknown> = {
+        buyerId: opts.buyerId,
+        supplierId: opts.supplierId,
+        includeTrace: true,
+      };
+      if (opts.paymentType !== undefined) params.paymentType = opts.paymentType;
+      if (opts.acceptorId !== undefined) params.acceptorId = opts.acceptorId;
+      if (opts.requireClear !== undefined) params.requireClear = opts.requireClear;
+      const response = await this.client.get<import('../types.js').DecisionTraceResponse>(
+        '/api/analysis/payability/resolve',
+        { params },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * List buyers (first page only)
    */
   async listBuyers(includeLinks: boolean = false): Promise<Buyer[]> {
