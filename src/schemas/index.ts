@@ -498,6 +498,53 @@ export const MatchingToolSchema = z.object({
   })
 );
 
+export const RulesToolSchema = z.object({
+  action: z.enum(["list", "effective", "trace"]),
+
+  // list
+  scopeType: z.enum([
+    "BUYER", "SUPPLIER", "BUYER_LINK",
+    "NETWORK_PARTNER", "ACCEPTOR", "PAYMENT_RAIL",
+  ]).optional(),
+  scopeId: z.string().min(1).optional(),
+  pageSize: z.number().int().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+
+  // effective
+  entityType: z.enum([
+    "SUPPLIER", "BUYER", "BUYER_LINK", "NETWORK_PARTNER", "AGGREGATOR",
+  ]).optional(),
+  entityId: z.string().min(1).optional(),
+
+  // trace
+  buyerId: z.string().min(1).optional(),
+  supplierId: z.string().min(1).optional(),
+  paymentType: z.string().optional(),
+  acceptorId: z.string().optional(),
+  requireClear: z.boolean().optional(),
+
+  // universal
+  format: z.enum(["compact", "full"]).default("compact"),
+  asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
+}).refine(
+  (data) => {
+    if (data.action === 'list'      && (!data.scopeType  || !data.scopeId))  return false;
+    if (data.action === 'effective' && (!data.entityType || !data.entityId)) return false;
+    if (data.action === 'trace'     && (!data.buyerId    || !data.supplierId)) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'list')
+      return { message: "The 'list' action requires 'scopeType' and 'scopeId'." };
+    if (data.action === 'effective')
+      return { message: "The 'effective' action requires 'entityType' and 'entityId'." };
+    if (data.action === 'trace')
+      return { message: "The 'trace' action requires 'buyerId' and 'supplierId'." };
+    return { message: 'Validation failed' };
+  },
+);
+
 export const AnalyzeToolSchema = z.object({
   action: z.enum(["connections", "relationships", "import_quality"]),
   includeSuggestions: z.boolean().default(true),
@@ -555,6 +602,7 @@ export type BuyersToolInput = z.infer<typeof BuyersToolSchema>;
 export type RelationshipsToolInput = z.infer<typeof RelationshipsToolSchema>;
 export type ImportsToolInput = z.infer<typeof ImportsToolSchema>;
 export type MatchingToolInput = z.infer<typeof MatchingToolSchema>;
+export type RulesToolInput = z.infer<typeof RulesToolSchema>;
 export type AnalyzeToolInput = z.infer<typeof AnalyzeToolSchema>;
 export type NotifySlackToolInput = z.infer<typeof NotifySlackToolSchema>;
 

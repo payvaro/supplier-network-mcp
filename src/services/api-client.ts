@@ -368,6 +368,78 @@ export class NetworkAPIClient {
   }
 
   /**
+   * List config rules for a given scope (admin endpoint).
+   * scopeType ∈ BUYER | SUPPLIER | BUYER_LINK | NETWORK_PARTNER | ACCEPTOR | PAYMENT_RAIL.
+   */
+  async listConfigRules(
+    scopeType: string,
+    scopeId: string,
+    pageSize: number = 20,
+    cursor?: string,
+  ): Promise<import('../types.js').ConfigRuleListResponse> {
+    try {
+      const params: Record<string, unknown> = { scopeType, scopeId, pageSize };
+      if (cursor) params.cursor = cursor;
+      const response = await this.client.get<import('../types.js').ConfigRuleListResponse>(
+        '/api/admin/config-rules',
+        { params },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Resolve the effective rule stack for a target entity by walking the
+   * configuration hierarchy (entity → buyer-link → buyer → network-partner → global).
+   */
+  async getEffectiveRules(
+    entityType: string,
+    entityId: string,
+  ): Promise<import('../types.js').EffectiveRuleResponse> {
+    try {
+      const response = await this.client.get<import('../types.js').EffectiveRuleResponse>(
+        '/api/config-rules/effective',
+        { params: { entityType, entityId } },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Resolve the best integration for a buyer-supplier pair, with includeTrace=true
+   * so the caller gets the full decision trace (chosen path + eliminated alternatives).
+   */
+  async resolveIntegrationTrace(opts: {
+    buyerId: string;
+    supplierId: string;
+    paymentType?: string;
+    acceptorId?: string;
+    requireClear?: boolean;
+  }): Promise<import('../types.js').DecisionTraceResponse> {
+    try {
+      const params: Record<string, unknown> = {
+        buyerId: opts.buyerId,
+        supplierId: opts.supplierId,
+        includeTrace: true,
+      };
+      if (opts.paymentType !== undefined) params.paymentType = opts.paymentType;
+      if (opts.acceptorId !== undefined) params.acceptorId = opts.acceptorId;
+      if (opts.requireClear !== undefined) params.requireClear = opts.requireClear;
+      const response = await this.client.get<import('../types.js').DecisionTraceResponse>(
+        '/api/analysis/payability/resolve',
+        { params },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * List buyers (first page only)
    */
   async listBuyers(includeLinks: boolean = false): Promise<Buyer[]> {

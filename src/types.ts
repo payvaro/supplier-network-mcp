@@ -460,3 +460,39 @@ export interface SlackGeneralMessage {
   footer?: string;                 // Custom footer text
   color?: 'good' | 'warning' | 'danger';  // Attachment sidebar color
 }
+
+// Config Rules (inferred from network OpenAPI — adjust if shapes diverge)
+export interface ConfigRule {
+  ruleId?: string;
+  directiveType?: string;
+  scopeType?: string;
+  scopeId?: string;
+  value?: unknown;
+  status?: string;
+  version?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigRuleListResponse {
+  rules?: ConfigRule[];
+  items?: ConfigRule[];
+  pagination?: PaginationInfo;
+  [key: string]: unknown;
+}
+
+export interface EffectiveRuleResponse {
+  entityType?: string;
+  entityId?: string;
+  directives?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface DecisionTraceResponse {
+  buyerId?: string;
+  supplierId?: string;
+  resolved?: unknown;
+  trace?: unknown;
+  [key: string]: unknown;
+}
