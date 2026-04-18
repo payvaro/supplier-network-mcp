@@ -885,11 +885,17 @@ export class NetworkAPIClient {
             return new Error(`Validation failed: ${validationErrors}`);
           }
           const rawMessage = data.error || axiosError.message;
-          if (/client[- ]?id.*(required|must)/i.test(rawMessage)) {
+          // Heuristic: on 400, if the MCP didn't send an x-client-id header,
+          // the most likely cause with an admin token is missing tenant scope.
+          // Covers the explicit "Client ID is required" message and the less
+          // obvious variants ("ID cannot be null or blank") that some admin
+          // endpoints surface when the path-var isn't populated.
+          const clientIdRegex = /\b(client[- ]?id|tenant|x-client-id|id cannot be (null|blank))\b/i;
+          if (!this.clientId && clientIdRegex.test(rawMessage)) {
             return new Error(
-              `This call needs a tenant scope. The Network API rejected the request because no x-client-id header was sent. ` +
-              `Either set NETWORK_CLIENT_ID on the MCP server, or pass 'asClientId=<clientId>' per request ` +
-              `(requires NETWORK_ADMIN_MODE=true). Original error: ${rawMessage}`
+              `This call needs a tenant scope. The Network API rejected the request (${status}: ${rawMessage}). ` +
+              `Either set NETWORK_CLIENT_ID on the MCP server, or pass 'asClientId=<uuid>' / 'asClientName=<name>' per request ` +
+              `(requires NETWORK_ADMIN_MODE=true). Use the 'lookup_client' tool with action 'list' to see available clients.`
             );
           }
           return new Error(`Bad request: ${rawMessage}`);

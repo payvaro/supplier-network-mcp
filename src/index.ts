@@ -592,8 +592,8 @@ function createServer() {
               },
               environment: {
                 type: "string",
-                enum: ["dev", "prod"],
-                description: "Target environment (default: dev)",
+                enum: ["local", "dev", "prod"],
+                description: "Target environment: 'local' (localstack), 'dev', or 'prod'. Default: dev.",
                 default: "dev",
               },
             },
