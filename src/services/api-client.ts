@@ -884,7 +884,15 @@ export class NetworkAPIClient {
               .join(", ");
             return new Error(`Validation failed: ${validationErrors}`);
           }
-          return new Error(`Bad request: ${data.error || axiosError.message}`);
+          const rawMessage = data.error || axiosError.message;
+          if (/client[- ]?id.*(required|must)/i.test(rawMessage)) {
+            return new Error(
+              `This call needs a tenant scope. The Network API rejected the request because no x-client-id header was sent. ` +
+              `Either set NETWORK_CLIENT_ID on the MCP server, or pass 'asClientId=<clientId>' per request ` +
+              `(requires NETWORK_ADMIN_MODE=true). Original error: ${rawMessage}`
+            );
+          }
+          return new Error(`Bad request: ${rawMessage}`);
         } else if (status === 500) {
           return new Error(`Server error: ${data.error || "Internal server error"}`);
         } else {
