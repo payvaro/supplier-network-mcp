@@ -541,6 +541,41 @@ The search uses the **Fuzzysort** library with weighted field matching:
 - `fuzzysort` - Fast fuzzy string matching
 - `typescript` - Type safety
 
+## Packaged Skills
+
+This repo ships reference skills under `skills/` that encode common network-mcp workflows. They live here (not in a shared skills directory) so they version alongside the tool surface.
+
+| Skill | Purpose |
+|-------|---------|
+| `network-payability-triage` | Diagnose a single buyer-supplier pair: is it payable, and if not, why? |
+| `network-payability-coverage` | Report coverage across a client's network with bucketed blockers. |
+
+### Install
+
+Claude Code and Codex auto-discover skills from their respective skills directories. To make these skills available, symlink (or copy) each skill directory into your local skills store:
+
+```bash
+# macOS / Linux — Claude Code
+ln -s "$(pwd)/skills/network-payability-triage" ~/.claude/skills/network-payability-triage
+ln -s "$(pwd)/skills/network-payability-coverage" ~/.claude/skills/network-payability-coverage
+
+# Codex
+ln -s "$(pwd)/skills/network-payability-triage" ~/.codex/skills/network-payability-triage
+ln -s "$(pwd)/skills/network-payability-coverage" ~/.codex/skills/network-payability-coverage
+```
+
+If your editor uses a different skills layout, copy the `skills/<skill-name>/SKILL.md` file into the location that tool expects.
+
+### Verifying packaged skills
+
+Skills are instruction text, not code, so there are no automated tests. To validate a change:
+
+1. Start the MCP locally against a seeded tenant: `npm start` (see the [Usage](#usage) section).
+2. Open an MCP-aware client (Claude Desktop, etc.) with the skill installed.
+3. Invoke each skill's trigger phrases against a known-good pair and a known-broken pair.
+4. Confirm the output matches the template in the skill's `SKILL.md`.
+5. Check `~/Library/Logs/Claude/mcp*.log` to verify the skill called the documented tool sequence.
+
 ## License
 
 Apache 2.0

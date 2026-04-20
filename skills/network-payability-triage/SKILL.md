@@ -1,0 +1,87 @@
+---
+name: network-payability-triage
+description: Diagnose why a specific buyer-supplier pair is or isn't payable on the Payvaro Network. Use when a user reports a failed payment, asks "why can't buyer X pay supplier Y", wants to triage a pair, or asks to walk the payability decision for a given pair. Requires the network-mcp server to be configured.
+---
+
+# Network Payability Triage (pair-level)
+
+Diagnose a single buyer-supplier pair using the network-mcp tools. Produces a structured verdict, a short trace, and a concrete next action.
+
+## When to use
+
+Trigger when the user asks any of:
+- "Why can't buyer X pay supplier Y?"
+- "Diagnose this failed payment"
+- "Triage this pair"
+- "Walk payability for <buyer> → <supplier>"
+
+For tenant-wide coverage questions ("how much of client X is payable"), use `network-payability-coverage` instead.
+
+## Preamble (shared with coverage skill)
+
+1. **Client resolution.** If the user names a client (e.g. "Comet Electric"), pass `asClientName: "Comet Electric"` directly on every downstream MCP call. Do NOT call `lookup_client` first unless the name is ambiguous or admin mode is off. If no client is named, omit the override and use the default tenant.
+2. **Admin-mode check.** `asClientName` / `asClientId` only work when the server runs with `NETWORK_ADMIN_MODE=true`. If a call rejects with an admin-override error, tell the user admin mode is off and re-run against the default tenant.
+3. **Tool-first.** Call MCP tools by name — do not re-explain their schemas to the user.
+4. **Output.** Terse, structured, copy-pasteable. No prose walls.
+
+## Workflow
+
+### 1. Resolve the buyer
+
+- If the user gave a UUID, use it.
+- If the user gave a name, call `buyers` with `action: list` (paginate if needed) and match; if still ambiguous, ask the user to disambiguate from the candidates.
+- If the user gave an external client reference, call `buyers` with `action: get` and `clientId: <ref>`.
+
+### 2. Resolve the supplier
+
+- If the user gave a UUID, use it.
+- Otherwise call `search` with the supplier name (and any known address/email fields) and pick the top match. Show confidence score; if below `0.8`, confirm with the user before proceeding.
+
+### 3. Run the payability trace
+
+Call `rules` with:
+
+- `action: "trace"`
+- `buyerId: <resolved buyer UUID>`
+- `supplierId: <resolved supplier UUID>`
+- `format: "compact"`
+
+If the user mentioned a specific payment type, pass `paymentType`. If they want guard-clearance enforced, pass `requireClear: true`.
+
+### 4. Interpret the `DecisionTrace`
+
+- **Chosen path present** → pair is payable. Name the acceptor and payment type. If the guard is not clear, flag it as a warning but keep the verdict as `PAYABLE`.
+- **No chosen path** → pair is blocked. Identify the first layer that eliminated every candidate and cite the elimination reason.
+
+### 5. Map blocker → next action
+
+| Blocking layer | Next action |
+|----------------|-------------|
+| No buyer-supplier link | Call `relationships` with `action: link` (requires `buyerId`, `supplierId`) |
+| No acceptor rule at any scope | Call `rules` with `action: list`, `scopeType: "NETWORK_PARTNER"`, `scopeId: <partner id>` to see what exists at the parent scope |
+| Guard not clear | Surface the guard field from the trace; point the user at the config owner |
+| Supplier or buyer inactive | Call `suppliers get` / `buyers get` and report the status field |
+| Other / unknown | Print the raw elimination reason and ask the user for context |
+
+### 6. Output
+
+Use this template exactly:
+
+```
+Pair: <buyer name> → <supplier name>
+Client: <client name or "(default tenant)">
+Verdict: PAYABLE via <acceptor> (<payment type>)   |   BLOCKED at <layer>
+Trace:
+  - <step 1 of chosen path or elimination>
+  - <step 2>
+  - <step 3>
+Next: <concrete tool call or config change>
+```
+
+Keep the whole block under ~15 lines. If the user wants the raw trace, re-run step 3 with `format: "full"`.
+
+## Common pitfalls
+
+- Do not re-implement payability logic locally. The `rules trace` response is the source of truth.
+- Do not call `analyze` for pair-level questions — it is for network-wide assessments.
+- If `rules trace` returns an error rather than a `DecisionTrace`, surface the error verbatim; don't guess at the cause.
