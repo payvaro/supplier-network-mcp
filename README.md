@@ -547,6 +547,8 @@ This repo ships reference skills under `skills/` that encode common network-mcp 
 
 | Skill | Purpose |
 |-------|---------|
+| `network-entity-lookup` | Resolve a supplier or buyer from a partial name or id; returns a compact canonical record. |
+| `network-traversal` | Walk the buyer↔supplier graph from a known entity: suppliers-for-buyer, buyers-for-supplier, shared suppliers, history. |
 | `network-payability-triage` | Diagnose a single buyer-supplier pair: is it payable, and if not, why? |
 | `network-payability-coverage` | Report coverage across a client's network with bucketed blockers. |
 
@@ -556,12 +558,14 @@ Claude Code and Codex auto-discover skills from their respective skills director
 
 ```bash
 # macOS / Linux — Claude Code
-ln -s "$(pwd)/skills/network-payability-triage" ~/.claude/skills/network-payability-triage
-ln -s "$(pwd)/skills/network-payability-coverage" ~/.claude/skills/network-payability-coverage
+for s in network-entity-lookup network-traversal network-payability-triage network-payability-coverage; do
+  ln -s "$(pwd)/skills/$s" ~/.claude/skills/$s
+done
 
 # Codex
-ln -s "$(pwd)/skills/network-payability-triage" ~/.codex/skills/network-payability-triage
-ln -s "$(pwd)/skills/network-payability-coverage" ~/.codex/skills/network-payability-coverage
+for s in network-entity-lookup network-traversal network-payability-triage network-payability-coverage; do
+  ln -s "$(pwd)/skills/$s" ~/.codex/skills/$s
+done
 ```
 
 If your editor uses a different skills layout, copy the `skills/<skill-name>/SKILL.md` file into the location that tool expects.
