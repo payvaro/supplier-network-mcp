@@ -20,10 +20,12 @@ Trigger when the user says any of:
 
 ## Preamble (shared)
 
-1. **Client resolution.** Pass `asClientName: "<name>"` on every downstream call when a client is named.
+1. **Client resolution.** Pass `asClientName: "<name>"` on every downstream call when a client is named. If no client is named, use the default tenant (no override) and note `"(default tenant)"` in the output header.
 2. **Admin-mode check.** Overrides need `NETWORK_ADMIN_MODE=true`. Fall back cleanly on rejection.
 3. **Tool-first.** Call tools by name.
 4. **Output.** Terse lists with counts; don't dump full records unless asked.
+
+**`buyerLinkCount` on `buyers list` is unreliable** — it sometimes reads 0 even when active links exist. Never use it to conclude "this buyer has no suppliers." Always call `relationships for_buyer` to get the real list.
 
 ## Starting-entity resolution
 
@@ -42,20 +44,35 @@ If a starting entity is ambiguous, stop and disambiguate before traversing. Don'
 
 1. Resolve the buyer id.
 2. Call `relationships` with `action: for_buyer`, `buyerId: <id>`.
-3. If the user also wants status/address for each supplier, that info is usually on the relationship record; only fetch `suppliers get` for the specific suppliers the user drills into.
+3. The relationship records return only ids, `connectionStatus`, and external references (`externalBuyerId`, `buyerLinkId`) — **not** supplier name/address/status. If the user asked for names, do ONE batch of `suppliers get` calls (one per supplier id) to enrich. Do not chain calls unnecessarily when the user just wanted a count or list of ids.
 
 ### Output
 
+If enriched (names available):
+
 ```
-Buyer: <name> (<uuid>)
+Buyer: <name> (<id>)
 Suppliers: N
-  - <supplier name> — <city/state> — <status> [refKey: <key or "-">]
+  - <supplier name> (<supplier id>) — <city/state or "-"> — <status> [externalBuyerId: <val or "-">]
   - ...
   (cap at 20; append "+X more" if truncated)
+```
+
+If NOT enriched (ids only — the default when the user didn't ask for names):
+
+```
+Buyer: <name> (<id>)
+Suppliers: N  (ids only; drill in with suppliers get for names/addresses)
+  - <supplier id> — connectionStatus: <status> [externalBuyerId: <val or "-">]
+  - ...
+  (cap at 20; append "+X more" if truncated)
+```
+
+```
 Next:
   - Triage a pair     → network-payability-triage
   - Coverage report   → network-payability-coverage
-  - Drill into one    → suppliers get id:<uuid> includeLinks:true
+  - Drill into one    → suppliers get id:<id> includeLinks:true
 ```
 
 ## Direction 2: Supplier → Buyers
@@ -70,10 +87,12 @@ Next:
 
 ### Output
 
+`relationships for_supplier` returns buyer ids + external references, not buyer names. If the user asked for names, follow up with `buyers get` (one per id) OR use `suppliers get ... includeLinks:true` instead, which returns buyer summaries attached to the supplier in a single call. Prefer the latter.
+
 ```
-Supplier: <name> (<uuid>)
+Supplier: <name> (<id>)
 Buyers: N
-  - <buyer name> (<franchise/store>) — [refKey: <key or "-">]
+  - <buyer name or id> (<franchise/store or "-">) — [externalBuyerId: <val or "-">]
   - ...
   (cap at 20; append "+X more" if truncated)
 Next:

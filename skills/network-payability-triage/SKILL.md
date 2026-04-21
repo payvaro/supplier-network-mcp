@@ -17,10 +17,14 @@ Trigger when the user asks any of:
 
 For tenant-wide coverage questions ("how much of client X is payable"), use `network-payability-coverage` instead.
 
+## Prerequisite: `rules` tool
+
+This skill depends on the `rules` MCP tool (action: `trace`), which was added to the network-mcp server in the "config rules explorer" release. If your installed MCP does not expose a `rules` tool, **stop and tell the user**: "Payability trace requires the `rules` tool, which isn't available on this network-mcp build. The installed plugin needs to be updated to include it." Do not try to reconstruct the payability logic from other tools — the answer would be wrong.
+
 ## Preamble (shared with coverage skill)
 
-1. **Client resolution.** If the user names a client (e.g. "Comet Electric"), pass `asClientName: "Comet Electric"` directly on every downstream MCP call. Do NOT call `lookup_client` first unless the name is ambiguous or admin mode is off. If no client is named, omit the override and use the default tenant.
-2. **Admin-mode check.** `asClientName` / `asClientId` only work when the server runs with `NETWORK_ADMIN_MODE=true`. If a call rejects with an admin-override error, tell the user admin mode is off and re-run against the default tenant.
+1. **Client resolution.** If the user names a client (e.g. "Comet Electric"), pass `asClientName: "Comet Electric"` directly on every downstream MCP call. Do NOT call `lookup_client` first unless the name is ambiguous. If no client is named, omit the override, use the default tenant, and note `"(default tenant)"` in the output's `Client:` line.
+2. **Admin-mode check.** `asClientName` / `asClientId` only work when the server runs with `NETWORK_ADMIN_MODE=true` and the installed MCP exposes those fields. If a call rejects with an admin-override error, or the schema doesn't declare the field, tell the user admin mode is off (or unsupported by this MCP build) and re-run against the default tenant.
 3. **Tool-first.** Call MCP tools by name — do not re-explain their schemas to the user.
 4. **Output.** Terse, structured, copy-pasteable. No prose walls.
 

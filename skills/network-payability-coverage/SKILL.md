@@ -17,10 +17,14 @@ Trigger when the user asks any of:
 
 For a single-pair diagnosis, use `network-payability-triage` instead.
 
+## Prerequisite: `rules` tool
+
+This skill depends on the `rules` MCP tool (action: `trace`), which was added in the "config rules explorer" release. If your installed MCP does not expose a `rules` tool, **stop and tell the user**: "Coverage report requires the `rules` tool, which isn't available on this network-mcp build. The installed plugin needs to be updated to include it." Don't try to approximate coverage from link presence alone — a link existing doesn't mean the pair is payable.
+
 ## Preamble (shared with triage skill)
 
-1. **Client resolution.** If the user names a client, pass `asClientName: "<name>"` on every downstream call. Skip `lookup_client` unless the name is ambiguous or admin mode is off.
-2. **Admin-mode check.** Overrides require `NETWORK_ADMIN_MODE=true` server-side. On rejection, say so and fall back to the default tenant.
+1. **Client resolution.** If the user names a client, pass `asClientName: "<name>"` on every downstream call. Skip `lookup_client` unless the name is ambiguous. If no client is named, use the default tenant and note `"(default tenant)"` in the output header.
+2. **Admin-mode check.** Overrides require `NETWORK_ADMIN_MODE=true` server-side AND the installed MCP must declare `asClientName`/`asClientId` on the tool schema. On rejection (or when the field isn't in the schema), say so and fall back to the default tenant.
 3. **Tool-first.** Reference MCP tools by name; do not re-explain schemas.
 4. **Output.** Terse, structured, copy-pasteable.
 
