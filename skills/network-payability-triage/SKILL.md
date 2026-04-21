@@ -54,15 +54,18 @@ If the user mentioned a specific payment type, pass `paymentType`. If they want 
 
 ### 4. Interpret the `DecisionTrace`
 
+Three shapes to distinguish:
+
 - **Chosen path present** → pair is payable. Name the acceptor and payment type. If the guard is not clear, flag it as a warning but keep the verdict as `PAYABLE`.
-- **No chosen path** → pair is blocked. Identify the first layer that eliminated every candidate and cite the elimination reason.
+- **No chosen path, `eliminated` non-empty** → pair is blocked *at rule evaluation*. Identify the first layer that eliminated every candidate and cite the elimination reason from the trace.
+- **No chosen path AND `eliminated` empty (both zero-length)** → no acceptor rules exist in the hierarchy for this pair at all — this is **`BLOCKED at rule configuration (no candidates)`**. The pair's `NETWORK_PARTNER`, `AGGREGATOR`, and entity-level scopes have no rules that match. This is different from "rules existed but got filtered" and almost always means the tenant was never configured end-to-end.
 
 ### 5. Map blocker → next action
 
 | Blocking layer | Next action |
 |----------------|-------------|
 | No buyer-supplier link | Call `relationships` with `action: link` (requires `buyerId`, `supplierId`) |
-| No acceptor rule at any scope | Call `rules` with `action: list`, `scopeType: "NETWORK_PARTNER"`, `scopeId: <partner id>` to see what exists at the parent scope |
+| No acceptor rule at any scope (eliminated empty) | Call `rules` with `action: list`, `scopeType: "NETWORK_PARTNER"`, `scopeId: <partner id>` at the parent scope. Partner id isn't always visible on the buyer/link record — try `suppliers get includeLinks:true` or `analyze connections` to surface it, or ask the user which partner scope to check. |
 | Guard not clear | Surface the guard field from the trace; point the user at the config owner |
 | Supplier or buyer inactive | Call `suppliers get` / `buyers get` and report the status field |
 | Other / unknown | Print the raw elimination reason and ask the user for context |

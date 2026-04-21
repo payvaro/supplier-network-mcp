@@ -65,8 +65,11 @@ Bucket by the `DecisionTrace` outcome:
 |--------|------------|
 | `payable` | Chosen path present, guard clear |
 | `routable_guard_blocked` | Chosen path present, guard not clear |
-| `no_rule` | No chosen path; elimination reason is "no acceptor rule at any scope" |
+| `no_config` | `chosenPath` AND `eliminated` both empty — no acceptor rules exist in the hierarchy at all. Distinct from `no_rule` (rules existed but were eliminated) |
+| `no_rule` | No chosen path; `eliminated` non-empty and reason is "no acceptor rule at any scope" |
 | `other` | No chosen path for some other reason — record the raw reason |
+
+If the entire tenant lands in `no_config`, that's a signal the tenant was never configured end-to-end — report it as a header warning, not as per-pair rows.
 
 Note: there is no `no_link` bucket because we enumerate via `relationships for_buyer`, which only returns existing links.
 
@@ -75,9 +78,9 @@ Note: there is no `no_link` bucket because we enumerate via `relationships for_b
 Use this template exactly:
 
 ```
-Client: <name or "(default tenant)"> (<uuid or "-">)
+Client: <name or "(default tenant)"> (<uuid or "-">)        # "-" in default-tenant mode
 Scope: <buyer name> — M suppliers         (or "All buyers (N) — K pairs" for sweep)
-Summary: P payable / G guard-blocked / R no-rule / O other
+Summary: P payable / G guard-blocked / C no-config / R no-rule / O other
 Blocked:
   - <supplier>: <reason> (next: <action>)
   - <supplier>: <reason> (next: <action>)
