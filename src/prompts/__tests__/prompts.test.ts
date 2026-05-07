@@ -3,8 +3,21 @@ import { NETWORK_PROMPTS, handleGetPrompt } from '../index.js';
 
 describe('prompts', () => {
   describe('NETWORK_PROMPTS', () => {
-    it('exports three prompts', () => {
-      expect(NETWORK_PROMPTS).toHaveLength(3);
+    it('exports the expected prompt set', () => {
+      // 3 original prompts (network_*) + 4 support-tooling playbooks (audit-client, fix-*).
+      expect(NETWORK_PROMPTS).toHaveLength(7);
+    });
+
+    it('includes the four support-tooling playbook prompts', () => {
+      const names = NETWORK_PROMPTS.map((p) => p.name);
+      expect(names).toEqual(
+        expect.arrayContaining([
+          'audit-client',
+          'fix-buyer-link',
+          'fix-buyer-external-ids',
+          'fix-acceptor-integration',
+        ]),
+      );
     });
 
     it('includes import_investigation prompt', () => {
@@ -29,9 +42,13 @@ describe('prompts', () => {
     });
 
     it('all prompts have correct structure', () => {
+      // Original prompts use a `network_` prefix; the support-tooling playbooks
+      // use the slash-command-style name (e.g. `audit-client`) so the same
+      // identifier serves both `prompts/get` and the user-facing `/audit-client`
+      // skill trigger.
       for (const prompt of NETWORK_PROMPTS) {
         expect(prompt.name).toBeDefined();
-        expect(prompt.name).toMatch(/^network_/);
+        expect(prompt.name).toMatch(/^(network_|audit-client$|fix-)/);
         expect(prompt.description).toBeDefined();
         expect(prompt.arguments).toBeDefined();
         expect(Array.isArray(prompt.arguments)).toBe(true);

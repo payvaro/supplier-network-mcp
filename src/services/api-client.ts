@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER, CLIENT_ID_HEADER } from "../constants.js";
-import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse } from "../types.js";
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse, Acceptor, AcceptorIntegration } from "../types.js";
 
 /**
  * Sanitizes an API key for use in HTTP headers by removing invalid characters.
@@ -820,6 +820,126 @@ export class NetworkAPIClient {
       const response = await this.client.get<StagedMatch[] | PaginatedResponse<StagedMatch>>(
         `/api/matching/jobs/${jobId}/staged`,
         { params }
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Patch buyer (partial update). Mirrors `patchSupplier` — body is wrapped
+   * in `{ buyer, updateMask }` per the network REST PATCH convention.
+   */
+  async patchBuyer(
+    id: string,
+    buyer: Partial<Buyer>,
+    updateMask?: string,
+  ): Promise<Buyer> {
+    try {
+      const response = await this.client.patch<Buyer>(
+        `/api/buyers/${id}`,
+        { buyer, updateMask },
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * List all acceptors visible to the current tenant.
+   * Endpoint accepts pagination but most tenants have a small acceptor count;
+   * caller can fetch a single page and handle paging if needed.
+   */
+  async listAcceptors(): Promise<Acceptor[]> {
+    try {
+      const response = await this.client.get<Acceptor[] | PaginatedResponse<Acceptor>>(
+        "/api/acceptors",
+      );
+      if (Array.isArray(response.data)) return response.data;
+      if (response.data && "items" in response.data) return response.data.items;
+      return [];
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get an acceptor by ID. Domain layer transparently handles the ACC#/NET#
+   * dual-prefix resolution, so callers can pass either form.
+   */
+  async getAcceptor(id: string): Promise<Acceptor> {
+    try {
+      const response = await this.client.get<Acceptor>(`/api/acceptors/${id}`);
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get the acceptor(s) currently associated with a supplier (via NSR#).
+   */
+  async getAcceptorsForSupplier(supplierId: string): Promise<Acceptor[]> {
+    try {
+      const response = await this.client.get<Acceptor[] | PaginatedResponse<Acceptor>>(
+        `/api/suppliers/${supplierId}/acceptors`,
+      );
+      if (Array.isArray(response.data)) return response.data;
+      if (response.data && "items" in response.data) return response.data.items;
+      return [];
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * List acceptor integrations attached to a supplier.
+   */
+  async listAcceptorIntegrationsForSupplier(
+    supplierId: string,
+  ): Promise<AcceptorIntegration[]> {
+    try {
+      const response = await this.client.get<
+        AcceptorIntegration[] | PaginatedResponse<AcceptorIntegration>
+      >(`/api/suppliers/${supplierId}/acceptor-integrations`);
+      if (Array.isArray(response.data)) return response.data;
+      if (response.data && "items" in response.data) return response.data.items;
+      return [];
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get a specific acceptor integration by id (scoped under a supplier).
+   */
+  async getAcceptorIntegration(
+    supplierId: string,
+    integrationId: string,
+  ): Promise<AcceptorIntegration> {
+    try {
+      const response = await this.client.get<AcceptorIntegration>(
+        `/api/suppliers/${supplierId}/acceptor-integrations/${integrationId}`,
+      );
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Create an AcceptorIntegration for a supplier.
+   */
+  async createAcceptorIntegration(
+    supplierId: string,
+    integration: Partial<AcceptorIntegration>,
+  ): Promise<AcceptorIntegration> {
+    try {
+      const response = await this.client.post<AcceptorIntegration>(
+        `/api/suppliers/${supplierId}/acceptor-integrations`,
+        integration,
       );
       return response.data;
     } catch (error) {

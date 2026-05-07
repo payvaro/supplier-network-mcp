@@ -21,6 +21,7 @@ import type { SearchResult, SupplierListResult } from "../types.js";
 import { ResponseFormat, HistoryFormat } from "../constants.js";
 import { createActionableError } from "../errors.js";
 import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
+import { resolveWriteGating, isWriteGatingRejection } from "../services/write-gating.js";
 
 /**
  * Search for suppliers with fuzzy matching
@@ -308,6 +309,19 @@ export async function handleSuppliers(params: SuppliersToolInput) {
           date: params.date!,
           response_format: ResponseFormat.MARKDOWN,
         }, scopedClient);
+      case "update_external_refs": {
+        const gate = resolveWriteGating(params, "suppliers", "update_external_refs");
+        if (isWriteGatingRejection(gate)) return gate;
+        return await updateSupplierExternalRefs(
+          {
+            id: params.id!,
+            externalRef: params.externalRefs?.externalRef,
+            alternateRefs: params.externalRefs?.alternateRefs,
+          },
+          gate.dryRun,
+          scopedClient,
+        );
+      }
       default:
         return {
           isError: true,
@@ -321,6 +335,91 @@ export async function handleSuppliers(params: SuppliersToolInput) {
         type: "text" as const,
         text: createActionableError(error instanceof Error ? error : String(error), 'suppliers', params.action, params as Record<string, unknown>).text,
       }],
+    };
+  }
+}
+
+export interface UpdateSupplierExternalRefsArgs {
+  id: string;
+  externalRef?: string;
+  alternateRefs?: string[];
+}
+
+/**
+ * Patch a supplier's external-ref fields via the existing PATCH endpoint.
+ * Caller resolves the write-gating dryRun decision before calling.
+ */
+export async function updateSupplierExternalRefs(
+  args: UpdateSupplierExternalRefsArgs,
+  dryRun: boolean,
+  clientOverride?: NetworkAPIClient,
+) {
+  try {
+    const client = clientOverride ?? getNetworkAPIClient();
+    const before = await client.getSupplier(args.id);
+
+    const proposed: Record<string, unknown> = {};
+    const maskParts: string[] = [];
+    if (args.externalRef !== undefined) {
+      proposed.externalRef = args.externalRef;
+      maskParts.push("externalRef");
+    }
+    if (args.alternateRefs !== undefined) {
+      proposed.alternateRefs = args.alternateRefs;
+      maskParts.push("alternateRefs");
+    }
+    const updateMask = maskParts.join(",");
+
+    const diff = {
+      supplierId: args.id,
+      updateMask,
+      before: {
+        externalRef: (before as { externalRef?: string }).externalRef,
+        alternateRefs: (before as { alternateRefs?: string[] }).alternateRefs,
+      },
+      proposed,
+    };
+
+    if (dryRun) {
+      const text = [
+        "# Supplier External Refs — Dry Run",
+        "",
+        `Would PATCH /api/suppliers/${args.id} with updateMask=\`${updateMask}\`:`,
+        "",
+        "```json",
+        JSON.stringify(diff, null, 2),
+        "```",
+        "",
+        "Re-invoke with `dryRun: false` (and `confirm: true` if running against prod) to persist.",
+      ].join("\n");
+      return {
+        content: [{ type: "text" as const, text }],
+        structuredContent: { dryRun: true, ...diff },
+      };
+    }
+
+    const updated = await client.patchSupplier(args.id, proposed, updateMask);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: [
+            "# Supplier External Refs Updated",
+            "",
+            "✅ Persisted.",
+            "",
+            `**Supplier:** ${updated.id}`,
+          ].join("\n"),
+        },
+      ],
+      structuredContent: { dryRun: false, ...diff, after: updated },
+    };
+  } catch (error) {
+    console.error("updateSupplierExternalRefs error:", error);
+    const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
+    return {
+      isError: true,
+      content: [{ type: "text" as const, text: errorResponse.text }],
     };
   }
 }

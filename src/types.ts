@@ -496,3 +496,89 @@ export interface DecisionTraceResponse {
   trace?: unknown;
   [key: string]: unknown;
 }
+
+// Acceptor / AcceptorIntegration domain (used by support-tooling playbooks)
+
+export interface Acceptor {
+  id?: string;
+  name?: string;
+  status?: string;
+  providerId?: string;
+  providerName?: string;
+  externalRef?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+export interface AcceptorIntegration {
+  id?: string;
+  acceptorId?: string;
+  supplierId?: string;
+  providerId?: string;
+  rail?: string;
+  paymentType?: string;
+  status?: string;
+  externalRef?: string;
+  config?: Record<string, unknown>;
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: unknown;
+}
+
+// Playbook / audit shapes
+
+export type FindingSeverity = "high" | "medium" | "low";
+
+export interface AuditFinding {
+  severity: FindingSeverity;
+  type:
+    | "missing_buyer_link"
+    | "missing_acceptor_integration"
+    | "malformed_external_ids";
+  /** Repair playbook to dispatch into. */
+  playbook:
+    | "fix-buyer-link"
+    | "fix-acceptor-integration"
+    | "fix-buyer-external-ids";
+  /** Human-readable description of the finding. */
+  message: string;
+  /** Pre-shaped args for the matching repair playbook. */
+  args: Record<string, unknown>;
+  buyerId?: string;
+  supplierId?: string;
+  acceptorId?: string;
+}
+
+export interface AuditSummary {
+  buyers: number;
+  suppliers: number;
+  missingLinks: number;
+  missingIntegrations: number;
+  malformedExternalIds: number;
+}
+
+export interface AuditClientResult {
+  clientId: string;
+  summary: AuditSummary;
+  findings: AuditFinding[];
+  generatedAt: string;
+}
+
+export interface DiagnoseBuyerLinkResult {
+  buyerId: string;
+  supplierId: string;
+  exists: boolean;
+  link?: BuyerLink;
+  missingFields: string[];
+  notes: string[];
+}
+
+export interface DiagnoseAcceptorIntegrationResult {
+  supplierId?: string;
+  acceptorId?: string;
+  acceptors: Acceptor[];
+  integrations: AcceptorIntegration[];
+  missingIntegration: boolean;
+  notes: string[];
+}
