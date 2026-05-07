@@ -66,6 +66,14 @@ describe('support tooling schemas', () => {
       });
       expect(r.success).toBe(true);
     });
+    it('accepts clientId: null to clear a sentinel value', () => {
+      const r = BuyersToolSchema.safeParse({
+        action: 'update_external_refs',
+        id: 'b1',
+        externalRefs: { clientId: null },
+      });
+      expect(r.success).toBe(true);
+    });
   });
 
   describe('SuppliersToolSchema.update_external_refs', () => {

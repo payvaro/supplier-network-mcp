@@ -107,11 +107,14 @@ export async function runAuditClient(
     }
   }
 
-  // a1 missing buyer-link surfaces only when a buyer-link reference is dangling.
-  // We keep this conservative: report every link with a missing supplier or
-  // buyer side as a candidate for repair.
+  // a1 missing buyer-link: flag only structurally dangling links (one side
+  // null/empty). We deliberately do NOT cross-reference against the
+  // transactional supplier walk built above — `supplierIds` only contains
+  // suppliers reachable via /api/buyers/{id}/suppliers, and a BuyerLink can
+  // legitimately exist for a supplier the buyer hasn't transacted with yet.
+  // Inferring "missing link" from that mismatch produced false positives in
+  // review.
   let missingLinks = 0;
-  const buyerIds = new Set(buyers.map((b) => b.id).filter(Boolean) as string[]);
   const links = await deps.listBuyerLinks();
   for (const link of links) {
     if (!link.buyerId || !link.supplierId) {
@@ -121,19 +124,6 @@ export async function runAuditClient(
         type: "missing_buyer_link",
         playbook: "fix-buyer-link",
         message: `Dangling BuyerLink — buyerId=${link.buyerId ?? "?"} supplierId=${link.supplierId ?? "?"}.`,
-        args: { buyerId: link.buyerId, supplierId: link.supplierId },
-        buyerId: link.buyerId,
-        supplierId: link.supplierId,
-      });
-      continue;
-    }
-    if (!buyerIds.has(link.buyerId) || !supplierIds.has(link.supplierId)) {
-      missingLinks += 1;
-      findings.push({
-        severity: "medium",
-        type: "missing_buyer_link",
-        playbook: "fix-buyer-link",
-        message: `BuyerLink references entity not visible to this client (buyer=${link.buyerId}, supplier=${link.supplierId}).`,
         args: { buyerId: link.buyerId, supplierId: link.supplierId },
         buyerId: link.buyerId,
         supplierId: link.supplierId,
@@ -241,9 +231,21 @@ export async function diagnoseAcceptorIntegration(
     }
   }
 
+  // Integration list is only available scoped to a supplier. When the caller
+  // gave only an acceptorId we can't truthfully claim "missing integration" —
+  // we have no way to enumerate integrations for an acceptor across suppliers
+  // through the current REST surface. Surface that honestly via a note rather
+  // than reporting a false "missing".
   let integrations: DiagnoseAcceptorIntegrationResult["integrations"] = [];
+  let missingIntegration = false;
   if (args.supplierId) {
     integrations = await client.listAcceptorIntegrationsForSupplier(args.supplierId);
+    missingIntegration = integrations.length === 0;
+  } else {
+    notes.push(
+      "Integration state is only checkable when 'supplierId' is provided. " +
+        "Re-run with a supplierId to determine whether an integration exists.",
+    );
   }
 
   return {
@@ -251,7 +253,7 @@ export async function diagnoseAcceptorIntegration(
     acceptorId: args.acceptorId,
     acceptors,
     integrations,
-    missingIntegration: integrations.length === 0,
+    missingIntegration,
     notes,
   };
 }

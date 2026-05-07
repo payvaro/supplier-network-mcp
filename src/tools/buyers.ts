@@ -446,7 +446,8 @@ export async function handleBuyers(params: BuyersToolInput) {
 
 export interface UpdateBuyerExternalRefsArgs {
   id: string;
-  clientId?: string;
+  /** `string` to set, `null` to explicitly clear, omitted to leave unchanged. */
+  clientId?: string | null;
   alternateRefs?: string[];
 }
 

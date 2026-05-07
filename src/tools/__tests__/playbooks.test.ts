@@ -75,7 +75,10 @@ describe('runAuditClient', () => {
     expect(missing[0].playbook).toBe('fix-acceptor-integration');
   });
 
-  it('flags dangling and cross-tenant buyer links', async () => {
+  it('flags structurally dangling buyer links only', async () => {
+    // A BuyerLink can legitimately reference a supplier the buyer hasn't
+    // transacted with yet, so the audit only flags links missing one side
+    // entirely — never "this supplier isn't in the transactional walk".
     const deps = makeDeps({
       buyers: [{ id: 'b1', clientId: 'CLR#abc' }],
       suppliersForBuyer: { b1: [{ id: 's1' }] },
@@ -83,7 +86,8 @@ describe('runAuditClient', () => {
       buyerLinks: [
         { buyerId: 'b1', supplierId: 's1' }, // OK
         { buyerId: 'b1' }, // dangling — no supplierId
-        { buyerId: 'b1', supplierId: 's-foreign' }, // supplier not in this tenant view
+        { supplierId: 's2' }, // dangling — no buyerId
+        { buyerId: 'b1', supplierId: 's-not-in-walk' }, // legit, must NOT flag
       ],
     });
 

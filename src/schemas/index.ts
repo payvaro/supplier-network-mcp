@@ -373,21 +373,23 @@ const ConfirmField = z.boolean().optional()
   .describe("Required when running a live write against a prod environment. Pair with 'dryRun: false'.");
 
 // External-ref payload for buyers. Fields are individually optional so callers
-// can patch one at a time; the dispatcher rejects empty payloads.
+// can patch one at a time; the dispatcher rejects empty payloads. Pass `null`
+// for a scalar field to explicitly clear it server-side (the primary repair
+// for sentinel values like "UNKNOWN"). Pass an empty array to clear
+// `alternateRefs`.
 const BuyerExternalRefsSchema = z.object({
-  clientId: z.string().min(1).optional()
-    .describe("Primary external client reference (the value used to match imports)."),
+  clientId: z.union([z.string().min(1), z.null()]).optional()
+    .describe("Primary external client reference. Pass null to clear."),
   alternateRefs: z.array(z.string().min(1)).optional()
-    .describe("Additional external identifiers (e.g. legacy CSV codes). Replaces the existing list when provided."),
+    .describe("Additional external identifiers (e.g. legacy CSV codes). Replaces the existing list when provided; pass [] to clear."),
 }).strict();
 
-// External-ref payload for suppliers. Mirrors buyers but with supplier-shaped
-// fields (NSR#, alternate rail refs).
+// External-ref payload for suppliers. Same null-clear semantics.
 const SupplierExternalRefsSchema = z.object({
-  externalRef: z.string().min(1).optional()
-    .describe("Primary supplier external reference."),
+  externalRef: z.union([z.string().min(1), z.null()]).optional()
+    .describe("Primary supplier external reference. Pass null to clear."),
   alternateRefs: z.array(z.string().min(1)).optional()
-    .describe("Additional external identifiers."),
+    .describe("Additional external identifiers; pass [] to clear."),
 }).strict();
 
 export const SearchToolSchema = z.object({

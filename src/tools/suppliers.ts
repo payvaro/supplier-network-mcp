@@ -341,7 +341,8 @@ export async function handleSuppliers(params: SuppliersToolInput) {
 
 export interface UpdateSupplierExternalRefsArgs {
   id: string;
-  externalRef?: string;
+  /** `string` to set, `null` to explicitly clear, omitted to leave unchanged. */
+  externalRef?: string | null;
   alternateRefs?: string[];
 }
 

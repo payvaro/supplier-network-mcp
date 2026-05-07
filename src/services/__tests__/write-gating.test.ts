@@ -85,6 +85,22 @@ describe('resolveWriteGating', () => {
     expect(isWriteGatingRejection(result)).toBe(false);
   });
 
+  it('treats unset NETWORK_ENVIRONMENT as dev (no confirm needed)', () => {
+    const result = resolveWriteGating({ dryRun: false }, 'buyers', 'x');
+    expect(isWriteGatingRejection(result)).toBe(false);
+    if (!isWriteGatingRejection(result)) {
+      expect(result.environment).toBe('dev');
+      expect(result.isProd).toBe(false);
+    }
+  });
+
+  it('staging environment does not require confirm', () => {
+    process.env.NETWORK_ENVIRONMENT = 'staging';
+    const result = resolveWriteGating({ dryRun: false }, 'buyers', 'x');
+    expect(isWriteGatingRejection(result)).toBe(false);
+    if (!isWriteGatingRejection(result)) expect(result.isProd).toBe(false);
+  });
+
   it('lower-cases NETWORK_ENVIRONMENT and matches PROD case-insensitively', () => {
     process.env.NETWORK_ENVIRONMENT = 'PROD';
     process.env.NETWORK_ADMIN_MODE = 'true';
