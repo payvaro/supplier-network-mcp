@@ -3,17 +3,16 @@ import type { LookupClientToolInput } from "../schemas/index.js";
 
 export async function lookupClientId(params: LookupClientToolInput) {
   const service = getClientLookupService();
-  const environment = params.environment;
 
   try {
     if (params.action === "list") {
-      const names = await service.getAllClientNames(environment);
+      const names = await service.getAllClientNames();
       return {
         content: [
           {
             type: "text" as const,
             text: [
-              `# Clients in \`${environment}\``,
+              "# Clients",
               "",
               `**Total:** ${names.length}`,
               "",
@@ -26,10 +25,10 @@ export async function lookupClientId(params: LookupClientToolInput) {
       };
     }
 
-    const result = await service.lookupByName(params.name!, environment);
+    const result = await service.lookupByName(params.name!);
 
     if (!result) {
-      const availableNames = await service.getAllClientNames(environment);
+      const availableNames = await service.getAllClientNames();
       return {
         content: [
           {
@@ -37,7 +36,7 @@ export async function lookupClientId(params: LookupClientToolInput) {
             text: [
               `# Client Lookup: "${params.name}"`,
               "",
-              `**No match found** in **${environment}** environment.`,
+              "**No match found.**",
               "",
               "## Available Clients",
               ...availableNames.map(n => `- ${n}`),
@@ -57,7 +56,6 @@ export async function lookupClientId(params: LookupClientToolInput) {
             "",
             `**Matched:** ${result.name}`,
             `**Client ID:** \`${result.clientId}\``,
-            `**Environment:** ${environment}`,
           ].join("\n"),
         },
       ],

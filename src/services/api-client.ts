@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER, CLIENT_ID_HEADER } from "../constants.js";
-import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse, Acceptor, AcceptorIntegration } from "../types.js";
+import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse, Acceptor, AcceptorIntegration, NetworkPartnerSummary } from "../types.js";
 
 /**
  * Sanitizes an API key for use in HTTP headers by removing invalid characters.
@@ -942,6 +942,47 @@ export class NetworkAPIClient {
         integration,
       );
       return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * List every network partner (a.k.a. client/tenant) the API key can see, paginating
+   * through the response. Used by the client-lookup service to back the `lookup_client`
+   * tool and to resolve `asClientName` admin overrides.
+   *
+   * Note: when `NETWORK_CLIENT_ID` is set on the MCP, the API will scope the response
+   * to that single tenant. For full visibility, run the MCP with admin mode (no
+   * default client id).
+   */
+  async listAllNetworkPartners(): Promise<NetworkPartnerSummary[]> {
+    const items: NetworkPartnerSummary[] = [];
+    let cursor: string | undefined;
+    const pageSize = 100;
+
+    try {
+      do {
+        const params: Record<string, unknown> = { pageSize };
+        if (cursor) params.cursor = cursor;
+        const response = await this.client.get<
+          NetworkPartnerSummary[] | PaginatedResponse<NetworkPartnerSummary>
+        >("/api/network-partners", { params });
+
+        if (Array.isArray(response.data)) {
+          items.push(...response.data);
+          break;
+        }
+        if (response.data && "items" in response.data) {
+          items.push(...response.data.items);
+          cursor = response.data.pagination?.hasMore && response.data.pagination?.nextCursor
+            ? response.data.pagination.nextCursor
+            : undefined;
+        } else {
+          break;
+        }
+      } while (cursor);
+      return items;
     } catch (error) {
       throw this.handleError(error);
     }

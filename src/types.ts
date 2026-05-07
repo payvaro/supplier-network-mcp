@@ -355,17 +355,13 @@ export interface RelationshipAnalysisResult {
   generatedAt: string;
 }
 
-// Client configuration (from S3 clients.json)
-export interface ClientRecord {
+// Subset of the Network API's `/api/network-partners` response that we rely on
+// for client-name → UUID resolution. The endpoint returns more fields (status,
+// roles, contacts, counts, ...) but we only need id+name for lookup.
+export interface NetworkPartnerSummary {
   id: string;
   name: string;
-  tokens: string[];
-  networkAccessList: string[];
-  paymentsAccessList: string[];
-}
-
-export interface ClientsConfig {
-  clients: ClientRecord[];
+  status?: string;
 }
 
 export interface ClientLookupResult {

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { lookupClientId } from '../clients.js';
 
-// Mock the client lookup service
 const mockLookupByName = vi.fn();
 const mockGetAllClientNames = vi.fn();
 
@@ -27,11 +26,10 @@ describe('lookupClientId tool handler', () => {
       name: 'Comet Electric Non-Prod',
     });
 
-    const result = await lookupClientId({ name: 'Comet Electric', environment: 'dev' });
+    const result = await lookupClientId({ action: 'resolve', name: 'Comet Electric', environment: 'dev' });
 
     expect(result.content[0].text).toContain('Comet Electric Non-Prod');
     expect(result.content[0].text).toContain('89aed99d-2bc2-4d14-bffc-9445b69cfdc2');
-    expect(result.content[0].text).toContain('dev');
     expect(result.isError).toBeUndefined();
   });
 
@@ -39,7 +37,7 @@ describe('lookupClientId tool handler', () => {
     mockLookupByName.mockResolvedValue(null);
     mockGetAllClientNames.mockResolvedValue(['Comet Electric Non-Prod', 'aroma_non_prod']);
 
-    const result = await lookupClientId({ name: 'Nonexistent', environment: 'dev' });
+    const result = await lookupClientId({ action: 'resolve', name: 'Nonexistent', environment: 'dev' });
 
     expect(result.content[0].text).toContain('No match found');
     expect(result.content[0].text).toContain('Comet Electric Non-Prod');
@@ -47,35 +45,25 @@ describe('lookupClientId tool handler', () => {
     expect(result.isError).toBe(true);
   });
 
-  it('passes dev environment through', async () => {
+  it('passes name through without env scoping', async () => {
     mockLookupByName.mockResolvedValue({
       clientId: 'abc',
       name: 'Test Client',
     });
 
-    await lookupClientId({ name: 'Test', environment: 'dev' });
+    await lookupClientId({ action: 'resolve', name: 'Test', environment: 'dev' });
 
-    expect(mockLookupByName).toHaveBeenCalledWith('Test', 'dev');
+    expect(mockLookupByName).toHaveBeenCalledWith('Test');
   });
 
-  it('passes prod environment through', async () => {
-    mockLookupByName.mockResolvedValue({
-      clientId: 'abc',
-      name: 'Test Prod',
-    });
+  it('handles API errors gracefully', async () => {
+    mockLookupByName.mockRejectedValue(new Error('Authentication failed'));
 
-    await lookupClientId({ name: 'Test', environment: 'prod' });
-
-    expect(mockLookupByName).toHaveBeenCalledWith('Test', 'prod');
-  });
-
-  it('handles S3 errors gracefully', async () => {
-    mockLookupByName.mockRejectedValue(new Error('Access Denied'));
-
-    const result = await lookupClientId({ name: 'Test', environment: 'dev' });
+    const result = await lookupClientId({ action: 'resolve', name: 'Test', environment: 'dev' });
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Error');
+    expect(result.content[0].text).toContain('Authentication failed');
   });
 
   describe('list action', () => {
@@ -92,7 +80,7 @@ describe('lookupClientId tool handler', () => {
       expect(mockLookupByName).not.toHaveBeenCalled();
     });
 
-    it('surfaces S3 errors on list', async () => {
+    it('surfaces errors on list', async () => {
       mockGetAllClientNames.mockRejectedValue(new Error('bucket not found'));
 
       const result = await lookupClientId({ action: 'list', environment: 'prod' });

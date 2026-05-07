@@ -358,9 +358,9 @@ export const ListStagedMatchesSchema = z.object({
 const AsClientIdField = z.string().min(1).optional()
   .describe("Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.");
 
-// Admin-only dynamic resolution: resolve a client name via the S3 client
-// config (same source as lookup_client) and use the resulting UUID as the
-// x-client-id header. Mutually exclusive with asClientId.
+// Admin-only dynamic resolution: resolve a client name via the Network API's
+// /api/network-partners endpoint (same source as lookup_client) and use the
+// resulting UUID as the x-client-id header. Mutually exclusive with asClientId.
 const AsClientNameField = z.string().min(1).optional()
   .describe("Admin-only: resolve a client by human-friendly name (e.g. 'Comet Electric') and use its UUID as the x-client-id header for this request. Requires NETWORK_ADMIN_MODE=true. Mutually exclusive with asClientId.");
 
@@ -768,9 +768,9 @@ export type GetMatchingJobInput = z.infer<typeof GetMatchingJobSchema>;
 export type ListMatchCandidatesInput = z.infer<typeof ListMatchCandidatesSchema>;
 export type ListStagedMatchesInput = z.infer<typeof ListStagedMatchesSchema>;
 
-// Environments supported by the client config lookup. 'local' targets the
-// localstack-seeded payvaro-configuration-local bucket; 'dev' and 'prod' hit
-// the corresponding real S3 buckets.
+// Retained as a no-op for backwards compatibility with callers that still pass
+// `environment`. The actual environment is now determined by which Network API
+// the MCP is configured against (NETWORK_API_BASE_URL).
 export const CLIENT_LOOKUP_ENVIRONMENTS = ["local", "dev", "prod"] as const;
 
 // Client lookup schema (single-name resolution, used internally)
@@ -780,7 +780,7 @@ export const LookupClientIdSchema = z.object({
     .describe("Human-friendly client name to look up (e.g. 'Comet Electric', 'Acumatica')"),
   environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS)
     .default("dev")
-    .describe("Target environment to look up the client ID for"),
+    .describe("Deprecated — ignored. The environment is determined by NETWORK_API_BASE_URL."),
 }).strict();
 
 export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;
@@ -792,7 +792,7 @@ export const LookupClientToolSchema = z.object({
   name: z.string().min(1).optional()
     .describe("Client name to resolve (required for 'resolve' action)"),
   environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS).default("dev")
-    .describe("Target environment: 'local' (localstack), 'dev', or 'prod'. Defaults to 'dev'."),
+    .describe("Deprecated — ignored. The environment is determined by NETWORK_API_BASE_URL."),
 }).refine(
   (data) => data.action !== "resolve" || !!data.name,
   { message: "The 'resolve' action requires 'name'." },

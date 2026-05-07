@@ -51,9 +51,9 @@ const asClientIdProperty = {
     "Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.",
 } as const;
 
-// Admin-only convenience: the dispatcher resolves this to a UUID via the S3
-// client config (same source as lookup_client) before issuing the request.
-// Mutually exclusive with asClientId.
+// Admin-only convenience: the dispatcher resolves this to a UUID via the
+// Network API's /api/network-partners endpoint (same source as lookup_client)
+// before issuing the request. Mutually exclusive with asClientId.
 const asClientNameProperty = {
   type: "string",
   description:
@@ -727,7 +727,7 @@ function createServer() {
         {
           name: "lookup_client",
           description:
-            "Browse or resolve clients from the S3 configuration store. Use action 'list' to see every client in an environment, or 'resolve' (default) to fuzzy-match a name to its UUID.\n\nActions:\n- `resolve` — Match a single `name` to its UUID (e.g. \"Comet Electric\" → `b5f3…`). Use before passing `asClientId` to another tool, or pass `asClientName` directly to skip this step.\n- `list` — Return all known client names. Useful when admins want to pick a tenant without guessing.",
+            "Browse or resolve clients from the Network API's network-partners list. Use action 'list' to see every client visible to the API key, or 'resolve' (default) to fuzzy-match a name to its UUID.\n\nActions:\n- `resolve` — Match a single `name` to its UUID (e.g. \"Comet Electric\" → `b5f3…`). Use before passing `asClientId` to another tool, or pass `asClientName` directly to skip this step.\n- `list` — Return all known client names. Useful when admins want to pick a tenant without guessing.",
           inputSchema: {
             type: "object",
             properties: {
