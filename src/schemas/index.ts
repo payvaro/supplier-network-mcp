@@ -358,11 +358,39 @@ export const ListStagedMatchesSchema = z.object({
 const AsClientIdField = z.string().min(1).optional()
   .describe("Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.");
 
-// Admin-only dynamic resolution: resolve a client name via the S3 client
-// config (same source as lookup_client) and use the resulting UUID as the
-// x-client-id header. Mutually exclusive with asClientId.
+// Admin-only dynamic resolution: resolve a client name via the Network API's
+// /api/network-partners endpoint (same source as lookup_client) and use the
+// resulting UUID as the x-client-id header. Mutually exclusive with asClientId.
 const AsClientNameField = z.string().min(1).optional()
   .describe("Admin-only: resolve a client by human-friendly name (e.g. 'Comet Electric') and use its UUID as the x-client-id header for this request. Requires NETWORK_ADMIN_MODE=true. Mutually exclusive with asClientId.");
+
+// Shared write-gating fields. Every WRITE action accepts these. Defaults to a
+// dry-run preview; callers must opt in with `dryRun: false` to persist, and
+// prod additionally requires `confirm: true` + NETWORK_ADMIN_MODE=true.
+const DryRunField = z.boolean().optional()
+  .describe("If true (default), preview the change without persisting. Set to false to actually write.");
+const ConfirmField = z.boolean().optional()
+  .describe("Required when running a live write against a prod environment. Pair with 'dryRun: false'.");
+
+// External-ref payload for buyers. Fields are individually optional so callers
+// can patch one at a time; the dispatcher rejects empty payloads. Pass `null`
+// for a scalar field to explicitly clear it server-side (the primary repair
+// for sentinel values like "UNKNOWN"). Pass an empty array to clear
+// `alternateRefs`.
+const BuyerExternalRefsSchema = z.object({
+  clientId: z.union([z.string().min(1), z.null()]).optional()
+    .describe("Primary external client reference. Pass null to clear."),
+  alternateRefs: z.array(z.string().min(1)).optional()
+    .describe("Additional external identifiers (e.g. legacy CSV codes). Replaces the existing list when provided; pass [] to clear."),
+}).strict();
+
+// External-ref payload for suppliers. Same null-clear semantics.
+const SupplierExternalRefsSchema = z.object({
+  externalRef: z.union([z.string().min(1), z.null()]).optional()
+    .describe("Primary supplier external reference. Pass null to clear."),
+  alternateRefs: z.array(z.string().min(1)).optional()
+    .describe("Additional external identifiers; pass [] to clear."),
+}).strict();
 
 export const SearchToolSchema = z.object({
   name: z.string().optional().describe("Supplier name or partial name to search for"),
@@ -380,19 +408,29 @@ export const SearchToolSchema = z.object({
 );
 
 export const SuppliersToolSchema = z.object({
-  action: z.enum(["list", "get", "history", "by_date"]),
+  action: z.enum(["list", "get", "history", "by_date", "update_external_refs"]),
   id: z.string().min(1).optional(),
   includeLinks: z.boolean().default(false),
   date: z.string().regex(/^\d{8}$/, "Date must be in yyyyMMdd format").optional(),
   format: HistoryFormatSchema.optional(),
   pageSize: z.number().int().min(1).max(100).default(20),
   cursor: z.string().optional(),
+  externalRefs: SupplierExternalRefsSchema.optional()
+    .describe("New external-ref values for the supplier (used by update_external_refs)."),
+  dryRun: DryRunField,
+  confirm: ConfirmField,
   asClientId: AsClientIdField,
   asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if ((data.action === 'get' || data.action === 'history') && !data.id) return false;
     if (data.action === 'by_date' && !data.date) return false;
+    if (data.action === 'update_external_refs') {
+      if (!data.id) return false;
+      if (!data.externalRefs) return false;
+      const refs = data.externalRefs;
+      if (refs.externalRef === undefined && refs.alternateRefs === undefined) return false;
+    }
     return true;
   },
   (data) => {
@@ -400,12 +438,16 @@ export const SuppliersToolSchema = z.object({
       return { message: `The '${data.action}' action requires 'id'.` };
     if (data.action === 'by_date' && !data.date)
       return { message: "The 'by_date' action requires 'date' in yyyyMMdd format." };
+    if (data.action === 'update_external_refs') {
+      if (!data.id) return { message: "The 'update_external_refs' action requires 'id' (supplier UUID)." };
+      return { message: "The 'update_external_refs' action requires 'externalRefs' with at least one field set." };
+    }
     return { message: "Validation failed" };
   }
 );
 
 export const BuyersToolSchema = z.object({
-  action: z.enum(["list", "get", "create"]),
+  action: z.enum(["list", "get", "create", "update_external_refs"]),
   id: z.string().min(1).optional(),
   clientId: z.string().min(1).optional(),
   name: z.string().optional(),
@@ -421,17 +463,31 @@ export const BuyersToolSchema = z.object({
     title: z.string().optional(),
     type: z.enum(["PRIMARY", "SECONDARY", "OTHER"]).optional(),
   })).optional(),
+  externalRefs: BuyerExternalRefsSchema.optional()
+    .describe("New external-ref values for the buyer (used by update_external_refs)."),
+  dryRun: DryRunField,
+  confirm: ConfirmField,
   asClientId: AsClientIdField,
   asClientName: AsClientNameField,
 }).refine(
   (data) => {
     if (data.action === 'get' && !data.id && !data.clientId) return false;
     if (data.action === 'create' && !data.clientId) return false;
+    if (data.action === 'update_external_refs') {
+      if (!data.id) return false;
+      if (!data.externalRefs) return false;
+      const refs = data.externalRefs;
+      if (refs.clientId === undefined && refs.alternateRefs === undefined) return false;
+    }
     return true;
   },
   (data) => {
     if (data.action === 'get') return { message: "The 'get' action requires either 'id' or 'clientId'." };
     if (data.action === 'create') return { message: "The 'create' action requires 'clientId'." };
+    if (data.action === 'update_external_refs') {
+      if (!data.id) return { message: "The 'update_external_refs' action requires 'id' (buyer UUID)." };
+      return { message: "The 'update_external_refs' action requires 'externalRefs' with at least one field set." };
+    }
     return { message: "Validation failed" };
   }
 );
@@ -572,6 +628,83 @@ export const AnalyzeToolSchema = z.object({
   }
 );
 
+export const AcceptorsToolSchema = z.object({
+  action: z.enum(["list", "get", "for_supplier"]),
+  id: z.string().min(1).optional()
+    .describe("Acceptor id (ACC#... or NET#...). Required for 'get'."),
+  supplierId: z.string().min(1).optional()
+    .describe("Supplier id. Required for 'for_supplier'."),
+  asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
+}).refine(
+  (data) => {
+    if (data.action === 'get' && !data.id) return false;
+    if (data.action === 'for_supplier' && !data.supplierId) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'get') return { message: "The 'get' action requires 'id' (acceptor id)." };
+    if (data.action === 'for_supplier') return { message: "The 'for_supplier' action requires 'supplierId'." };
+    return { message: "Validation failed" };
+  },
+);
+
+export const AcceptorIntegrationsToolSchema = z.object({
+  action: z.enum(["list", "get", "create"]),
+  supplierId: z.string().min(1).optional()
+    .describe("Supplier id (required for list/get/create). All integrations are scoped to a supplier."),
+  integrationId: z.string().min(1).optional()
+    .describe("Integration id (required for 'get')."),
+  acceptorId: z.string().min(1).optional()
+    .describe("Acceptor id (required for 'create' — links the integration to an acceptor)."),
+  providerId: z.string().min(1).optional()
+    .describe("Provider id for the integration (required for 'create')."),
+  rail: z.string().min(1).optional()
+    .describe("Payment rail (e.g. 'CARD', 'ACH'). Required for 'create' unless the provider derives it."),
+  paymentType: z.string().optional(),
+  externalRef: z.string().optional(),
+  status: z.string().optional(),
+  config: z.record(z.unknown()).optional()
+    .describe("Free-form provider-specific configuration."),
+  dryRun: DryRunField,
+  confirm: ConfirmField,
+  asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
+}).refine(
+  (data) => {
+    if (!data.supplierId) return false;
+    if (data.action === 'get' && !data.integrationId) return false;
+    if (data.action === 'create' && (!data.acceptorId || !data.providerId)) return false;
+    return true;
+  },
+  (data) => {
+    if (!data.supplierId) return { message: "All actions require 'supplierId'." };
+    if (data.action === 'get') return { message: "The 'get' action requires 'integrationId'." };
+    if (data.action === 'create') return { message: "The 'create' action requires both 'acceptorId' and 'providerId'." };
+    return { message: "Validation failed" };
+  },
+);
+
+export const PlaybooksToolSchema = z.object({
+  action: z.enum(["audit_client", "diagnose_buyer_link", "diagnose_acceptor_integration"]),
+  buyerId: z.string().min(1).optional(),
+  supplierId: z.string().min(1).optional(),
+  acceptorId: z.string().min(1).optional(),
+  asClientId: AsClientIdField,
+  asClientName: AsClientNameField,
+}).refine(
+  (data) => {
+    if (data.action === 'diagnose_buyer_link' && (!data.buyerId || !data.supplierId)) return false;
+    if (data.action === 'diagnose_acceptor_integration' && !data.supplierId && !data.acceptorId) return false;
+    return true;
+  },
+  (data) => {
+    if (data.action === 'diagnose_buyer_link') return { message: "The 'diagnose_buyer_link' action requires both 'buyerId' and 'supplierId'." };
+    if (data.action === 'diagnose_acceptor_integration') return { message: "The 'diagnose_acceptor_integration' action requires either 'supplierId' or 'acceptorId'." };
+    return { message: "Validation failed" };
+  },
+);
+
 export const NotifySlackToolSchema = z.object({
   type: z.enum(["analysis", "custom"]),
   webhookUrl: z.string().url().optional(),
@@ -605,6 +738,9 @@ export type MatchingToolInput = z.infer<typeof MatchingToolSchema>;
 export type RulesToolInput = z.infer<typeof RulesToolSchema>;
 export type AnalyzeToolInput = z.infer<typeof AnalyzeToolSchema>;
 export type NotifySlackToolInput = z.infer<typeof NotifySlackToolSchema>;
+export type AcceptorsToolInput = z.infer<typeof AcceptorsToolSchema>;
+export type AcceptorIntegrationsToolInput = z.infer<typeof AcceptorIntegrationsToolSchema>;
+export type PlaybooksToolInput = z.infer<typeof PlaybooksToolSchema>;
 
 // Type exports for inference
 export type SupplierSearchInput = z.infer<typeof SupplierSearchSchema>;
@@ -632,9 +768,9 @@ export type GetMatchingJobInput = z.infer<typeof GetMatchingJobSchema>;
 export type ListMatchCandidatesInput = z.infer<typeof ListMatchCandidatesSchema>;
 export type ListStagedMatchesInput = z.infer<typeof ListStagedMatchesSchema>;
 
-// Environments supported by the client config lookup. 'local' targets the
-// localstack-seeded payvaro-configuration-local bucket; 'dev' and 'prod' hit
-// the corresponding real S3 buckets.
+// Retained as a no-op for backwards compatibility with callers that still pass
+// `environment`. The actual environment is now determined by which Network API
+// the MCP is configured against (NETWORK_API_BASE_URL).
 export const CLIENT_LOOKUP_ENVIRONMENTS = ["local", "dev", "prod"] as const;
 
 // Client lookup schema (single-name resolution, used internally)
@@ -644,7 +780,7 @@ export const LookupClientIdSchema = z.object({
     .describe("Human-friendly client name to look up (e.g. 'Comet Electric', 'Acumatica')"),
   environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS)
     .default("dev")
-    .describe("Target environment to look up the client ID for"),
+    .describe("Deprecated — ignored. The environment is determined by NETWORK_API_BASE_URL."),
 }).strict();
 
 export type LookupClientIdInput = z.infer<typeof LookupClientIdSchema>;
@@ -656,7 +792,7 @@ export const LookupClientToolSchema = z.object({
   name: z.string().min(1).optional()
     .describe("Client name to resolve (required for 'resolve' action)"),
   environment: z.enum(CLIENT_LOOKUP_ENVIRONMENTS).default("dev")
-    .describe("Target environment: 'local' (localstack), 'dev', or 'prod'. Defaults to 'dev'."),
+    .describe("Deprecated — ignored. The environment is determined by NETWORK_API_BASE_URL."),
 }).refine(
   (data) => data.action !== "resolve" || !!data.name,
   { message: "The 'resolve' action requires 'name'." },

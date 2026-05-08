@@ -18,9 +18,9 @@ export interface AdminScopeResolved {
 
 /**
  * Resolves an admin-mode tenant override from tool params. Accepts either
- * `asClientId` (UUID) or `asClientName` (fuzzy-matched via the S3 client
- * config). Returns the resolved client ID, or an error payload shaped like
- * a tool response that the caller can return directly.
+ * `asClientId` (UUID) or `asClientName` (fuzzy-matched against the Network
+ * partners list). Returns the resolved client ID, or an error payload shaped
+ * like a tool response that the caller can return directly.
  *
  * Callers should return the rejection as-is without re-wrapping, so the
  * dispatcher emits a single actionable error message per tool call.
@@ -59,13 +59,12 @@ export async function resolveAdminScope(
     return { clientId: asClientId };
   }
 
-  const environment = (process.env.NETWORK_ENVIRONMENT ?? "dev").toLowerCase();
   const service = getClientLookupService();
 
   try {
-    const result = await service.lookupByName(asClientName!, environment);
+    const result = await service.lookupByName(asClientName!);
     if (!result) {
-      const available = await service.getAllClientNames(environment).catch(() => [] as string[]);
+      const available = await service.getAllClientNames().catch(() => [] as string[]);
       const hint = available.length > 0
         ? ` Available clients: ${available.slice(0, 10).join(", ")}${available.length > 10 ? ", ..." : ""}.`
         : "";
@@ -75,7 +74,7 @@ export async function resolveAdminScope(
           {
             type: "text",
             text:
-              `❌ Error: No client matched 'asClientName=${asClientName}' in environment '${environment}'.` +
+              `❌ Error: No client matched 'asClientName=${asClientName}'.` +
               hint +
               ` Use the 'lookup_client' tool with action 'list' to see all options.`,
           },
@@ -91,9 +90,9 @@ export async function resolveAdminScope(
         {
           type: "text",
           text:
-            `❌ Error: Failed to resolve 'asClientName=${asClientName}' from the client config ` +
-            `(S3 bucket for '${process.env.NETWORK_ENVIRONMENT ?? "dev"}'). ` +
-            `Check AWS credentials and network access, or pass 'asClientId' directly. Details: ${message}`,
+            `❌ Error: Failed to resolve 'asClientName=${asClientName}' via the Network API ` +
+            `(GET /api/network-partners). Check NETWORK_API_KEY / NETWORK_API_BASE_URL, ` +
+            `or pass 'asClientId' directly. Details: ${message}`,
         },
       ],
     };

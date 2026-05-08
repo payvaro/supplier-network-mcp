@@ -21,6 +21,9 @@ import {
   NotifySlackToolSchema,
   LookupClientToolSchema,
   RulesToolSchema,
+  AcceptorsToolSchema,
+  AcceptorIntegrationsToolSchema,
+  PlaybooksToolSchema,
 } from "./schemas/index.js";
 
 // Import tool handlers
@@ -32,6 +35,9 @@ import { handleMatching } from "./tools/matching.js";
 import { handleAnalyze, handleNotifySlack } from "./tools/analysis.js";
 import { lookupClientId } from "./tools/clients.js";
 import { handleRules } from "./tools/rules.js";
+import { handleAcceptors } from "./tools/acceptors.js";
+import { handleAcceptorIntegrations } from "./tools/acceptor-integrations.js";
+import { handlePlaybooks } from "./tools/playbooks.js";
 
 // Import prompts
 import { NETWORK_PROMPTS, handleGetPrompt } from "./prompts/index.js";
@@ -45,9 +51,9 @@ const asClientIdProperty = {
     "Admin-only: override the x-client-id header for this request. Requires the server to run with NETWORK_ADMIN_MODE=true. Pair with lookup_client to resolve a client name to its UUID.",
 } as const;
 
-// Admin-only convenience: the dispatcher resolves this to a UUID via the S3
-// client config (same source as lookup_client) before issuing the request.
-// Mutually exclusive with asClientId.
+// Admin-only convenience: the dispatcher resolves this to a UUID via the
+// Network API's /api/network-partners endpoint (same source as lookup_client)
+// before issuing the request. Mutually exclusive with asClientId.
 const asClientNameProperty = {
   type: "string",
   description:
@@ -648,9 +654,80 @@ function createServer() {
           },
         },
         {
+          name: "acceptors",
+          description:
+            "Inspect acceptors on the Payvaro Network. Used by support tooling to walk supplier↔acceptor relationships.\n\nActions:\n- `list` — List all acceptors visible to the tenant.\n- `get` — Get an acceptor by id (handles ACC#/NET# dual prefix transparently).\n- `for_supplier` — List acceptor(s) currently linked to a supplier (via NSR# AcceptorSupplierRef).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["list", "get", "for_supplier"],
+                description: "The action to perform",
+              },
+              id: { type: "string", description: "Acceptor id (for get)" },
+              supplierId: { type: "string", description: "Supplier id (for for_supplier)" },
+              asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
+            },
+            required: ["action"],
+          },
+        },
+        {
+          name: "acceptor_integrations",
+          description:
+            "Inspect or create AcceptorIntegrations. Used by the /fix-acceptor-integration support playbook to make a supplier payable.\n\nActions:\n- `list` — List integrations for a supplier (`supplierId` required).\n- `get` — Get a specific integration (`supplierId` + `integrationId`).\n- `create` — [WRITE] Create a new integration. Defaults to `dryRun: true`. Prod live writes require `confirm: true` AND NETWORK_ADMIN_MODE=true.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: { type: "string", enum: ["list", "get", "create"] },
+              supplierId: { type: "string" },
+              integrationId: { type: "string" },
+              acceptorId: { type: "string" },
+              providerId: { type: "string" },
+              rail: { type: "string" },
+              paymentType: { type: "string" },
+              externalRef: { type: "string" },
+              status: { type: "string" },
+              config: { type: "object", description: "Free-form provider-specific configuration" },
+              dryRun: {
+                type: "boolean",
+                description: "If true (default), preview the change without persisting.",
+              },
+              confirm: {
+                type: "boolean",
+                description: "Required for live writes against prod (paired with dryRun: false).",
+              },
+              asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
+            },
+            required: ["action", "supplierId"],
+          },
+        },
+        {
+          name: "playbooks",
+          description:
+            "Server-side helpers backing the Supplier Network support playbooks. Composes existing tools deterministically.\n\nActions:\n- `audit_client` — Aggregate setup gaps across the tenant: malformed buyer external IDs, missing acceptor integrations, dangling buyer-links. Returns a structured `findings` list with per-finding `playbook` + `args`.\n- `diagnose_buyer_link` — Inspect the state of a specific buyer↔supplier pair (requires `buyerId` + `supplierId`).\n- `diagnose_acceptor_integration` — Inspect acceptor + integration state for a supplier or acceptor (requires `supplierId` or `acceptorId`).",
+          inputSchema: {
+            type: "object",
+            properties: {
+              action: {
+                type: "string",
+                enum: ["audit_client", "diagnose_buyer_link", "diagnose_acceptor_integration"],
+              },
+              buyerId: { type: "string" },
+              supplierId: { type: "string" },
+              acceptorId: { type: "string" },
+              asClientId: asClientIdProperty,
+              asClientName: asClientNameProperty,
+            },
+            required: ["action"],
+          },
+        },
+        {
           name: "lookup_client",
           description:
-            "Browse or resolve clients from the S3 configuration store. Use action 'list' to see every client in an environment, or 'resolve' (default) to fuzzy-match a name to its UUID.\n\nActions:\n- `resolve` — Match a single `name` to its UUID (e.g. \"Comet Electric\" → `b5f3…`). Use before passing `asClientId` to another tool, or pass `asClientName` directly to skip this step.\n- `list` — Return all known client names. Useful when admins want to pick a tenant without guessing.",
+            "Browse or resolve clients from the Network API's network-partners list. Use action 'list' to see every client visible to the API key, or 'resolve' (default) to fuzzy-match a name to its UUID.\n\nActions:\n- `resolve` — Match a single `name` to its UUID (e.g. \"Comet Electric\" → `b5f3…`). Use before passing `asClientId` to another tool, or pass `asClientName` directly to skip this step.\n- `list` — Return all known client names. Useful when admins want to pick a tenant without guessing.",
           inputSchema: {
             type: "object",
             properties: {
@@ -740,6 +817,21 @@ function createServer() {
         case "notify_slack": {
           const params = NotifySlackToolSchema.parse(args);
           response = await handleNotifySlack(params);
+          break;
+        }
+        case "acceptors": {
+          const params = AcceptorsToolSchema.parse(args);
+          response = await handleAcceptors(params);
+          break;
+        }
+        case "acceptor_integrations": {
+          const params = AcceptorIntegrationsToolSchema.parse(args);
+          response = await handleAcceptorIntegrations(params);
+          break;
+        }
+        case "playbooks": {
+          const params = PlaybooksToolSchema.parse(args);
+          response = await handlePlaybooks(params);
           break;
         }
         case "lookup_client": {

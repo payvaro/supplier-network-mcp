@@ -1,83 +1,64 @@
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import fuzzysort from "fuzzysort";
-import {
-  CLIENT_CONFIG_BUCKET_PREFIX,
-  CLIENT_CONFIG_KEY,
-  CLIENT_CONFIG_CACHE_TTL_MS,
-} from "../constants.js";
-import type { ClientsConfig, ClientRecord, ClientLookupResult } from "../types.js";
+import { CLIENT_CONFIG_CACHE_TTL_MS } from "../constants.js";
+import { getNetworkAPIClient } from "./api-client.js";
+import type { NetworkAPIClient } from "./api-client.js";
+import type { NetworkPartnerSummary, ClientLookupResult } from "../types.js";
 
 interface CacheEntry {
-  clients: ClientRecord[];
+  partners: NetworkPartnerSummary[];
   fetchedAt: number;
 }
 
+/**
+ * Resolves human-readable client/tenant names to Network UUIDs.
+ *
+ * Backed by `GET /api/network-partners` on the Network API — the same source of
+ * truth the rest of the API uses internally. Replaces an earlier implementation
+ * that read `clients.json` from S3, which required AWS credentials in the MCP
+ * process and risked drifting from the canonical Network data.
+ */
 export class ClientLookupService {
-  private s3: S3Client;
-  private cache: Map<string, CacheEntry> = new Map();
+  private cache: CacheEntry | null = null;
+  private apiClient?: NetworkAPIClient;
 
-  constructor() {
-    // Honor an explicit endpoint override (localstack: http://localhost:4566)
-    // when set via AWS_ENDPOINT_URL or AWS_ENDPOINT_URL_S3. Localstack requires
-    // path-style addressing since it doesn't serve virtual-hosted-style buckets.
-    const endpoint = process.env.AWS_ENDPOINT_URL_S3 ?? process.env.AWS_ENDPOINT_URL;
-    this.s3 = new S3Client(
-      endpoint
-        ? { endpoint, forcePathStyle: true, region: process.env.AWS_REGION ?? "us-west-2" }
-        : {},
-    );
+  constructor(apiClient?: NetworkAPIClient) {
+    this.apiClient = apiClient;
   }
 
-  async lookupByName(name: string, environment = "dev"): Promise<ClientLookupResult | null> {
-    const clients = await this.getClients(environment);
-    const targets = clients.map(c => c.name);
+  async lookupByName(name: string): Promise<ClientLookupResult | null> {
+    const partners = await this.getPartners();
+    const targets = partners.map(p => p.name);
 
     const results = fuzzysort.go(name, targets, { limit: 1, threshold: -1000 });
-
     if (results.length === 0) {
       return null;
     }
 
-    const bestMatch = results[0];
-    const matchedClient = clients.find(c => c.name === bestMatch.target);
-
-    if (!matchedClient) {
+    const match = partners.find(p => p.name === results[0].target);
+    if (!match) {
       return null;
     }
 
-    return {
-      clientId: matchedClient.id,
-      name: matchedClient.name,
-    };
+    return { clientId: match.id, name: match.name };
   }
 
-  async getAllClientNames(environment = "dev"): Promise<string[]> {
-    const clients = await this.getClients(environment);
-    return clients.map(c => c.name);
+  async getAllClientNames(): Promise<string[]> {
+    const partners = await this.getPartners();
+    return partners.map(p => p.name);
   }
 
-  private async getClients(environment: string): Promise<ClientRecord[]> {
-    const cached = this.cache.get(environment);
-    if (cached && Date.now() - cached.fetchedAt < CLIENT_CONFIG_CACHE_TTL_MS) {
-      return cached.clients;
+  private async getPartners(): Promise<NetworkPartnerSummary[]> {
+    if (this.cache && Date.now() - this.cache.fetchedAt < CLIENT_CONFIG_CACHE_TTL_MS) {
+      return this.cache.partners;
     }
 
-    const bucket = `${CLIENT_CONFIG_BUCKET_PREFIX}-${environment}`;
-    const command = new GetObjectCommand({ Bucket: bucket, Key: CLIENT_CONFIG_KEY });
-    const response = await this.s3.send(command);
-    const body = await response.Body!.transformToString();
-    const config: ClientsConfig = JSON.parse(body);
-
-    this.cache.set(environment, {
-      clients: config.clients,
-      fetchedAt: Date.now(),
-    });
-
-    return config.clients;
+    const client = this.apiClient ?? getNetworkAPIClient();
+    const partners = await client.listAllNetworkPartners();
+    this.cache = { partners, fetchedAt: Date.now() };
+    return partners;
   }
 }
 
-// Singleton
 let instance: ClientLookupService | null = null;
 
 export function getClientLookupService(): ClientLookupService {

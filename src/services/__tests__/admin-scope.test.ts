@@ -65,19 +65,9 @@ describe('resolveAdminScope', () => {
 
     const result = await resolveAdminScope({ asClientName: 'Comet' }, 'suppliers');
 
-    expect(mockLookupByName).toHaveBeenCalledWith('Comet', 'dev');
+    expect(mockLookupByName).toHaveBeenCalledWith('Comet');
     expect(isAdminScopeRejection(result)).toBe(false);
     if (!isAdminScopeRejection(result)) expect(result.clientId).toBe('uuid-123');
-  });
-
-  it('uses NETWORK_ENVIRONMENT when set', async () => {
-    process.env.NETWORK_ADMIN_MODE = 'true';
-    process.env.NETWORK_ENVIRONMENT = 'prod';
-    mockLookupByName.mockResolvedValue({ clientId: 'x', name: 'y' });
-
-    await resolveAdminScope({ asClientName: 'foo' }, 'suppliers');
-
-    expect(mockLookupByName).toHaveBeenCalledWith('foo', 'prod');
   });
 
   it('returns actionable error with available names when asClientName has no match', async () => {
@@ -95,7 +85,7 @@ describe('resolveAdminScope', () => {
     }
   });
 
-  it('wraps S3/lookup errors with guidance to use asClientId fallback', async () => {
+  it('wraps lookup errors with guidance to use asClientId fallback', async () => {
     process.env.NETWORK_ADMIN_MODE = 'true';
     mockLookupByName.mockRejectedValue(new Error('Access Denied'));
 

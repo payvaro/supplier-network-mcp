@@ -18,6 +18,7 @@ import type { BuyerListResult, SupplierListResult } from "../types.js";
 import { ResponseFormat } from "../constants.js";
 import { createActionableError } from "../errors.js";
 import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
+import { resolveWriteGating, isWriteGatingRejection } from "../services/write-gating.js";
 
 /**
  * List all buyers
@@ -413,6 +414,19 @@ export async function handleBuyers(params: BuyersToolInput) {
           contacts: params.contacts,
           response_format: ResponseFormat.MARKDOWN,
         }, scopedClient);
+      case "update_external_refs": {
+        const gate = resolveWriteGating(params, "buyers", "update_external_refs");
+        if (isWriteGatingRejection(gate)) return gate;
+        return await updateBuyerExternalRefs(
+          {
+            id: params.id!,
+            clientId: params.externalRefs?.clientId,
+            alternateRefs: params.externalRefs?.alternateRefs,
+          },
+          gate.dryRun,
+          scopedClient,
+        );
+      }
       default:
         return {
           isError: true,
@@ -426,6 +440,94 @@ export async function handleBuyers(params: BuyersToolInput) {
         type: "text" as const,
         text: createActionableError(error instanceof Error ? error : String(error), 'buyers', params.action, params as Record<string, unknown>).text,
       }],
+    };
+  }
+}
+
+export interface UpdateBuyerExternalRefsArgs {
+  id: string;
+  /** `string` to set, `null` to explicitly clear, omitted to leave unchanged. */
+  clientId?: string | null;
+  alternateRefs?: string[];
+}
+
+/**
+ * Patch a buyer's external-ref fields. Used by the support tooling to repair
+ * imports that fail because external IDs are missing/malformed. Honors the
+ * shared write-gating dryRun contract — caller resolves the gate before calling.
+ */
+export async function updateBuyerExternalRefs(
+  args: UpdateBuyerExternalRefsArgs,
+  dryRun: boolean,
+  clientOverride?: NetworkAPIClient,
+) {
+  try {
+    const client = clientOverride ?? getNetworkAPIClient();
+    const before = await client.getBuyer(args.id);
+
+    const proposed: Record<string, unknown> = {};
+    const maskParts: string[] = [];
+    if (args.clientId !== undefined) {
+      proposed.clientId = args.clientId;
+      maskParts.push("clientId");
+    }
+    if (args.alternateRefs !== undefined) {
+      proposed.alternateRefs = args.alternateRefs;
+      maskParts.push("alternateRefs");
+    }
+    const updateMask = maskParts.join(",");
+
+    const diff = {
+      buyerId: args.id,
+      updateMask,
+      before: {
+        clientId: before.clientId,
+        alternateRefs: (before as { alternateRefs?: string[] }).alternateRefs,
+      },
+      proposed,
+    };
+
+    if (dryRun) {
+      const text = [
+        "# Buyer External Refs — Dry Run",
+        "",
+        `Would PATCH /api/buyers/${args.id} with updateMask=\`${updateMask}\`:`,
+        "",
+        "```json",
+        JSON.stringify(diff, null, 2),
+        "```",
+        "",
+        "Re-invoke with `dryRun: false` (and `confirm: true` if running against prod) to persist.",
+      ].join("\n");
+      return {
+        content: [{ type: "text" as const, text }],
+        structuredContent: { dryRun: true, ...diff },
+      };
+    }
+
+    const updated = await client.patchBuyer(args.id, proposed, updateMask);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: [
+            "# Buyer External Refs Updated",
+            "",
+            "✅ Persisted.",
+            "",
+            `**Buyer:** ${updated.id}`,
+            `**clientId:** ${updated.clientId ?? "—"}`,
+          ].join("\n"),
+        },
+      ],
+      structuredContent: { dryRun: false, ...diff, after: updated },
+    };
+  } catch (error) {
+    console.error("updateBuyerExternalRefs error:", error);
+    const errorResponse = createErrorResponse(error instanceof Error ? error.message : String(error));
+    return {
+      isError: true,
+      content: [{ type: "text" as const, text: errorResponse.text }],
     };
   }
 }
