@@ -1,0 +1,102 @@
+---
+nameOverride: "network-mcp-server"
+fullnameOverride: "network-mcp-server"
+## ----------------------------------------------------------------------------
+## Basic settings for the Deployment and Service
+## ----------------------------------------------------------------------------
+image:
+  repository: 632054408344.dkr.ecr.us-west-2.amazonaws.com/payvaro/network-mcp
+  pullPolicy: IfNotPresent
+  tag: "latest"
+serviceAccount:
+  create: true
+  automount: true
+  name: "network-mcp-server"
+terminationGracePeriodSeconds: 30
+service:
+  type: ClusterIP
+  port: 80
+  ports:
+    - port: 80
+      targetPort: 3000
+      protocol: TCP
+      name: http
+## ----------------------------------------------------------------------------
+## Resource requests and limits for the container
+## ----------------------------------------------------------------------------
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "125m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+## ----------------------------------------------------------------------------
+## Environment variables for the container
+## ----------------------------------------------------------------------------
+env:
+  - name: PORT
+    value: "3000"
+  - name: NETWORK_API_BASE_URL
+    value: "http://network-api.network.svc.cluster.local"
+  - name: AUTH_SERVER_URL
+    value: "http://auth-server.auth-server.svc.cluster.local"
+  - name: MCP_PUBLIC_URL
+    value: "https://api.payvaro-dev.com/mcp"
+  - name: COGNITO_USER_POOL_ID
+    value: "us-west-2_uLtD9ymZR"
+  - name: NODE_ENV
+    value: "production"
+## ----------------------------------------------------------------------------
+## Probes configuration for the container
+## ----------------------------------------------------------------------------
+livenessProbe:
+  httpGet:
+    path: /mcp/health
+    port: 3000
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /mcp/health
+    port: 3000
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+startupProbe:
+  httpGet:
+    path: /mcp/health
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 6
+## ----------------------------------------------------------------------------
+## Replica and Autoscaling configuration for the Deployment
+## ----------------------------------------------------------------------------
+replicaCount: 1
+autoscaling:
+  enabled: false
+## ----------------------------------------------------------------------------
+## Ingress configuration for the application
+## ----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/group.name: common-internal
+    alb.ingress.kubernetes.io/scheme: internal
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:632054408344:certificate/f9b278c1-1828-42bb-8e0b-cf16dc2d18a7
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /mcp/health
+    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/healthcheck-port: "3000"
+  hosts:
+    - paths:
+        - path: /mcp
+          pathType: Prefix
+  tls: []

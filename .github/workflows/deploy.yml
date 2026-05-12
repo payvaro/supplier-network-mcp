@@ -1,0 +1,248 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["charts/**"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+      ref:
+        description: 'Branch or tag to deploy'
+        required: true
+        default: 'main'
+        type: string
+
+permissions:
+  id-token: write
+  contents: write
+  issues: write
+  deployments: write
+
+concurrency:
+  group: deploy-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  setenv:
+    name: Set environment
+    runs-on: self-hosted-small
+    outputs:
+      environment: ${{ steps.setenv.outputs.environment }}
+    steps:
+      - name: Detect environment
+        id: setenv
+        env:
+          INPUT_ENV: ${{ inputs.environment || 'dev' }}
+        run: echo "environment=${INPUT_ENV}" >>"$GITHUB_OUTPUT"
+
+  approval:
+    needs:
+      - setenv
+    runs-on: self-hosted-small
+    if: ${{ needs.setenv.outputs.environment == 'prod' }}
+    timeout-minutes: 60
+    steps:
+      - name: Create approval issue
+        id: create-issue
+        uses: payvaro/gh-workflows/deployment/create-approval-issue@main
+        with:
+          github-token: ${{ secrets.GH_APPROVERS_PAT }}
+
+      - name: Notify Slack of pending approval
+        uses: payvaro/gh-workflows/slack/approval-request@main
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_APPROVAL_WEBHOOK_URL }}
+          issue-url: ${{ steps.create-issue.outputs.issue-url }}
+
+      - name: Wait for approval
+        uses: payvaro/gh-workflows/slack/wait-for-approval@main
+        with:
+          github-token: ${{ secrets.GH_APPROVERS_PAT }}
+          issue-number: ${{ steps.create-issue.outputs.issue-number }}
+
+      - name: Notify Slack of deployment
+        uses: payvaro/gh-workflows/slack/notify-of-approval@main
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_APPROVAL_WEBHOOK_URL }}
+
+  build-and-deploy:
+    name: Build and Deploy
+    needs:
+      - setenv
+      - approval
+    if: ${{ !failure() }}
+    runs-on: self-hosted-medium
+    environment: ${{ needs.setenv.outputs.environment }}
+    env:
+      REPO_NAME: ${{ vars.ECR_REPOSITORY }}
+      CHARTS_DIR: charts/network-mcp-server/${{ needs.setenv.outputs.environment }}
+    permissions:
+      contents: write
+      id-token: write
+      deployments: write
+    steps:
+      - name: Create GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.PAYVARO_GITHUB_ACTIONS_APP_ID }}
+          private-key: ${{ secrets.PAYVARO_GITHUB_ACTIONS_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ needs.setenv.outputs.environment == 'dev' && vars.DEV_GHACTIONS_AWS_ROLE_ARN || vars.PROD_GHACTIONS_AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: Create deployment record
+        id: deployment
+        uses: payvaro/gh-workflows/deployment/create-gh-deployment@main
+        with:
+          environment: ${{ needs.setenv.outputs.environment }}
+
+      - name: Set variables for Docker and ECR
+        run: |
+          COMMIT_SHORT=$(git rev-parse --short HEAD)
+          REGISTRY=$(echo "$REPO_NAME" | cut -d'/' -f1)
+          echo COMMIT_SHORT=$COMMIT_SHORT >> $GITHUB_ENV
+          echo REGISTRY=$REGISTRY >> $GITHUB_ENV
+          echo "TIMESTAMP=$(date +%Y%m%d-%H%M%S)" >> $GITHUB_ENV
+
+      - name: Docker login to ECR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t $REPO_NAME:$COMMIT_SHORT .
+          docker tag $REPO_NAME:$COMMIT_SHORT $REPO_NAME:latest
+          docker tag $REPO_NAME:$COMMIT_SHORT $REPO_NAME:$TIMESTAMP
+          docker push $REPO_NAME:$COMMIT_SHORT
+          docker push $REPO_NAME:latest
+          docker push $REPO_NAME:$TIMESTAMP
+
+      - name: Pull latest changes
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: git pull --rebase origin "$REF_NAME"
+
+      - name: Update image tag in Helm values
+        working-directory: ${{ env.CHARTS_DIR }}
+        run: yq eval ".image.tag |= \"${COMMIT_SHORT}\"" -i values.yaml
+
+      - name: Commit change made to values.yaml
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: Updated Docker image tag to ${{ env.COMMIT_SHORT }}
+          file_pattern: ${{ env.CHARTS_DIR }}/values.yaml
+          commit_user_email: github-actions@payvaro.com
+          commit_user_name: GitHub Actions
+          commit_author: GitHub Actions <github-actions@payvaro.com>
+          push_options: '--force-with-lease'
+
+      - name: Update deployment status (success)
+        if: ${{ success() }}
+        uses: payvaro/gh-workflows/deployment/update-gh-deployment-status@main
+        with:
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          environment: ${{ needs.setenv.outputs.environment }}
+          state: success
+
+      - name: Update deployment status (failure)
+        if: ${{ failure() }}
+        uses: payvaro/gh-workflows/deployment/update-gh-deployment-status@main
+        with:
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
+          environment: ${{ needs.setenv.outputs.environment }}
+          state: failure
+
+  smoke-test:
+    runs-on: self-hosted-medium
+    needs:
+      - setenv
+      - build-and-deploy
+    environment: ${{ needs.setenv.outputs.environment }}
+    env:
+      BASE_URL: ${{ needs.setenv.outputs.environment == 'prod' && 'https://api.payvaro.com' || 'https://api.payvaro-dev.com' }}
+    steps:
+      - name: Health check
+        run: |
+          echo "Checking health endpoint at ${BASE_URL}/mcp/health..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/mcp/health" || echo "000")
+
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Health check passed (HTTP $HTTP_STATUS)"
+          else
+            echo "Health check failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Smoke test - MCP endpoint requires auth
+        run: |
+          echo "Testing POST /mcp without auth returns 401..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/mcp" \
+            -H "Content-Type: application/json" \
+            -d '{"jsonrpc":"2.0","method":"tools/list","id":1}')
+          if [ "$HTTP_STATUS" != "401" ]; then
+            echo "Expected 401, got HTTP $HTTP_STATUS"
+            exit 1
+          fi
+          echo "POST /mcp without auth returned HTTP $HTTP_STATUS (expected 401)"
+          echo "All smoke tests passed!"
+
+  notify-failure:
+    runs-on: self-hosted-small
+    needs:
+      - setenv
+      - build-and-deploy
+    if: failure()
+    steps:
+      - name: Notify Slack on failure
+        uses: payvaro/gh-workflows/slack/notify-of-deploy-failure@main
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
+          environment: ${{ needs.setenv.outputs.environment }}
+
+  notify-success:
+    runs-on: self-hosted-small
+    needs:
+      - setenv
+      - build-and-deploy
+    if: ${{ success() && needs.setenv.outputs.environment == 'prod' }}
+    steps:
+      - name: Notify Slack on success
+        uses: payvaro/gh-workflows/slack/notify-of-deploy-success@main
+        with:
+          slack-webhook-url: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}
+          environment: ${{ needs.setenv.outputs.environment }}

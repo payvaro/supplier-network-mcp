@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -8,6 +9,8 @@ import {
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
+import cors from "cors";
+import { runWithAuth } from "./auth/request-context.js";
 
 // Import consolidated schemas
 import {
@@ -924,30 +927,69 @@ async function startStdio() {
 }
 
 /**
- * Start the server in HTTP mode (simplified endpoint wrapper)
+ * Start the server in HTTP mode with StreamableHTTP transport
  */
 async function startHttp(port: number = 3000) {
   const app = express();
 
+  app.use(cors());
   app.use(express.json());
 
-  app.get("/health", (_req, res) => {
+  app.get("/mcp/health", (_req, res) => {
     res.json({ status: "ok", service: "network-mcp-server" });
   });
 
-  app.post("/mcp", async (_req, res) => {
-    res.status(501).json({
-      error:
-        "HTTP mode not fully implemented. Please use stdio mode with: npm start",
+  app.post("/mcp", async (req, res) => {
+    const server = createServer();
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
+
+    res.on("close", () => {
+      transport.close().catch(() => {});
+      server.close().catch(() => {});
+    });
+
+    await server.connect(transport);
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Missing or invalid Authorization header" });
+      return;
+    }
+    const accessToken = authHeader.slice(7);
+
+    const clientId = extractClaimFromJwt(accessToken, "custom:clientId") ?? "";
+
+    await runWithAuth({ accessToken, clientId }, () =>
+      transport.handleRequest(req, res, req.body)
+    );
+  });
+
+  app.get("/mcp", async (_req, res) => {
+    res.status(405).json({ error: "SSE not supported — use POST" });
+  });
+
+  app.delete("/mcp", async (_req, res) => {
+    res.status(405).json({ error: "Session deletion not supported in stateless mode" });
   });
 
   app.listen(port, () => {
-    console.error(
-      `Network MCP Server HTTP endpoint available on http://localhost:${port}/mcp`
-    );
-    console.error(`Note: For full functionality, use stdio mode: npm start`);
+    console.error(`Network MCP Server listening on http://0.0.0.0:${port}/mcp`);
   });
+}
+
+function extractClaimFromJwt(token: string, claim: string): string | undefined {
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return undefined;
+    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString());
+    return decoded[claim] ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

@@ -2,6 +2,7 @@ import axios, { AxiosInstance, AxiosError } from "axios";
 import { promises as fs } from "fs";
 import path from "path";
 import { DEFAULT_BASE_URL, AUTH_HEADER, CLIENT_ID_HEADER } from "../constants.js";
+import { getRequestAuth } from "../auth/request-context.js";
 import type { Supplier, Buyer, BuyerLink, AggregatorLink, FileImportJob, MatchingJob, MatchCandidate, StagedMatch, PaginatedResponse, Acceptor, AcceptorIntegration, NetworkPartnerSummary } from "../types.js";
 
 /**
@@ -133,6 +134,23 @@ export class NetworkAPIClient {
    * The clone shares `apiKey`, `baseURL`, and sanitization state with its parent,
    * but has its own `axios` instance with the override baked into the default headers.
    */
+  public withBearerToken(accessToken: string, clientId: string): NetworkAPIClient {
+    const clone: NetworkAPIClient = Object.create(NetworkAPIClient.prototype);
+    clone.apiKey = accessToken;
+    clone.baseURL = this.baseURL;
+    clone.clientId = clientId;
+    clone.client = axios.create({
+      baseURL: this.baseURL,
+      headers: {
+        "Content-Type": "application/json",
+        [AUTH_HEADER]: `Bearer ${accessToken}`,
+        ...(clientId && { [CLIENT_ID_HEADER]: clientId }),
+      },
+      timeout: 30000,
+    });
+    return clone;
+  }
+
   public withClientIdOverride(clientIdOverride: string): NetworkAPIClient {
     if (!clientIdOverride) {
       throw new Error("withClientIdOverride requires a non-empty clientIdOverride");
@@ -1149,12 +1167,18 @@ export class NetworkAPIClient {
   }
 }
 
-// Singleton instance
+// Singleton instance (used for stdio mode and as base for HTTP-mode clones)
 let clientInstance: NetworkAPIClient | null = null;
 
 export function getNetworkAPIClient(apiKey?: string, baseURL?: string, clientId?: string): NetworkAPIClient {
   if (!clientInstance) {
     clientInstance = new NetworkAPIClient(apiKey, baseURL, clientId);
   }
+
+  const reqAuth = getRequestAuth();
+  if (reqAuth) {
+    return clientInstance.withBearerToken(reqAuth.accessToken, reqAuth.clientId);
+  }
+
   return clientInstance;
 }
