@@ -381,13 +381,13 @@ export async function createBuyerLink(params: CreateBuyerLinkInput, clientOverri
 /**
  * Dispatch wrapper for the consolidated buyers tool
  */
-export async function handleBuyers(params: BuyersToolInput) {
+export async function handleBuyers(params: BuyersToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'buyers');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "list":

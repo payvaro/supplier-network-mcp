@@ -1158,3 +1158,11 @@ export function getNetworkAPIClient(apiKey?: string, baseURL?: string, clientId?
   }
   return clientInstance;
 }
+
+/**
+ * Create a per-request API client using the user's own bearer token and tenant client ID.
+ * Used in HTTP/OAuth mode where each user authenticates individually.
+ */
+export function createAuthenticatedClient(accessToken: string, tenantClientId: string): NetworkAPIClient {
+  return new NetworkAPIClient(accessToken, undefined, tenantClientId);
+}

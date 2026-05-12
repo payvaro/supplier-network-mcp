@@ -114,13 +114,13 @@ export async function createAcceptorIntegration(
   };
 }
 
-export async function handleAcceptorIntegrations(params: AcceptorIntegrationsToolInput) {
+export async function handleAcceptorIntegrations(params: AcceptorIntegrationsToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, "acceptor_integrations");
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "list":

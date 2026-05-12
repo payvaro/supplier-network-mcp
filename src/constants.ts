@@ -14,6 +14,28 @@ export function isAdminMode(): boolean {
   return process.env[NETWORK_ADMIN_MODE_ENV] === "true";
 }
 
+// OAuth / HTTP mode configuration
+export const AUTH_SERVER_URL_ENV = "AUTH_SERVER_URL";
+export const JWKS_URI_ENV = "JWKS_URI";
+export const JWT_ISSUER_ENV = "JWT_ISSUER";
+export const MCP_PUBLIC_URL_ENV = "MCP_PUBLIC_URL";
+
+export function getAuthServerUrl(): string {
+  return process.env[AUTH_SERVER_URL_ENV] ?? "http://localhost:8080/auth";
+}
+
+export function getJwksUri(): string {
+  return process.env[JWKS_URI_ENV] ?? `${getAuthServerUrl()}/.well-known/jwks.json`;
+}
+
+export function getJwtIssuer(): string {
+  return process.env[JWT_ISSUER_ENV] ?? getAuthServerUrl();
+}
+
+export function getMcpPublicUrl(): string {
+  return process.env[MCP_PUBLIC_URL_ENV] ?? "http://localhost:3000";
+}
+
 // Slack Configuration
 export const DEFAULT_SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 

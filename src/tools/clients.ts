@@ -1,8 +1,9 @@
-import { getClientLookupService } from "../services/client-lookup.js";
+import { getClientLookupService, ClientLookupService } from "../services/client-lookup.js";
+import type { NetworkAPIClient } from "../services/api-client.js";
 import type { LookupClientToolInput } from "../schemas/index.js";
 
-export async function lookupClientId(params: LookupClientToolInput) {
-  const service = getClientLookupService();
+export async function lookupClientId(params: LookupClientToolInput, clientOverride?: NetworkAPIClient) {
+  const service = clientOverride ? new ClientLookupService(clientOverride) : getClientLookupService();
 
   try {
     if (params.action === "list") {

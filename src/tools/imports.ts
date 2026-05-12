@@ -2,20 +2,20 @@ import { uploadFile } from "./suppliers.js";
 import { listImportBatchesTool, validateImportDataTool } from "./workflows.js";
 import { createActionableError } from "../errors.js";
 import { ResponseFormat } from "../constants.js";
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 import type { ImportsToolInput } from "../schemas/index.js";
 
 /**
  * Dispatch wrapper for the consolidated imports tool
  */
-export async function handleImports(params: ImportsToolInput) {
+export async function handleImports(params: ImportsToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'imports');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "upload":

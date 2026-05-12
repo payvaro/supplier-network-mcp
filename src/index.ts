@@ -1,6 +1,10 @@
 #!/usr/bin/env node
+import { randomUUID } from "crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { mcpAuthRouter } from "@modelcontextprotocol/sdk/server/auth/router.js";
+import { requireBearerAuth } from "@modelcontextprotocol/sdk/server/auth/middleware/bearerAuth.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -8,6 +12,15 @@ import {
   GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import express from "express";
+import { createOAuthProvider } from "./auth/oauth-provider.js";
+import { createJwtVerifier } from "./auth/jwt-verifier.js";
+import { createAuthenticatedClient } from "./services/api-client.js";
+import {
+  getAuthServerUrl,
+  getJwksUri,
+  getJwtIssuer,
+  getMcpPublicUrl,
+} from "./constants.js";
 
 // Import consolidated schemas
 import {
@@ -764,10 +777,18 @@ function createServer() {
   /**
    * Handle tool execution
    */
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     // Log raw request
     console.error("=== MCP Request (CallTool) ===");
     console.error(JSON.stringify(request, null, 2));
+
+    // In HTTP/OAuth mode, create a per-request client from the user's token
+    const authClient = extra.authInfo
+      ? createAuthenticatedClient(
+          extra.authInfo.token,
+          (extra.authInfo.extra as Record<string, unknown>)?.tenantClientId as string ?? extra.authInfo.clientId,
+        )
+      : undefined;
 
     try {
       const { name, arguments: args } = request.params;
@@ -776,42 +797,42 @@ function createServer() {
       switch (name) {
         case "search": {
           const params = SearchToolSchema.parse(args);
-          response = await handleSearch(params);
+          response = await handleSearch(params, authClient);
           break;
         }
         case "suppliers": {
           const params = SuppliersToolSchema.parse(args);
-          response = await handleSuppliers(params);
+          response = await handleSuppliers(params, authClient);
           break;
         }
         case "buyers": {
           const params = BuyersToolSchema.parse(args);
-          response = await handleBuyers(params);
+          response = await handleBuyers(params, authClient);
           break;
         }
         case "relationships": {
           const params = RelationshipsToolSchema.parse(args);
-          response = await handleRelationships(params);
+          response = await handleRelationships(params, authClient);
           break;
         }
         case "imports": {
           const params = ImportsToolSchema.parse(args);
-          response = await handleImports(params);
+          response = await handleImports(params, authClient);
           break;
         }
         case "matching": {
           const params = MatchingToolSchema.parse(args);
-          response = await handleMatching(params);
+          response = await handleMatching(params, authClient);
           break;
         }
         case "rules": {
           const params = RulesToolSchema.parse(args);
-          response = await handleRules(params);
+          response = await handleRules(params, authClient);
           break;
         }
         case "analyze": {
           const params = AnalyzeToolSchema.parse(args);
-          response = await handleAnalyze(params);
+          response = await handleAnalyze(params, authClient);
           break;
         }
         case "notify_slack": {
@@ -821,22 +842,22 @@ function createServer() {
         }
         case "acceptors": {
           const params = AcceptorsToolSchema.parse(args);
-          response = await handleAcceptors(params);
+          response = await handleAcceptors(params, authClient);
           break;
         }
         case "acceptor_integrations": {
           const params = AcceptorIntegrationsToolSchema.parse(args);
-          response = await handleAcceptorIntegrations(params);
+          response = await handleAcceptorIntegrations(params, authClient);
           break;
         }
         case "playbooks": {
           const params = PlaybooksToolSchema.parse(args);
-          response = await handlePlaybooks(params);
+          response = await handlePlaybooks(params, authClient);
           break;
         }
         case "lookup_client": {
           const params = LookupClientToolSchema.parse(args);
-          response = await lookupClientId(params);
+          response = await lookupClientId(params, authClient);
           break;
         }
         default:
@@ -924,29 +945,121 @@ async function startStdio() {
 }
 
 /**
- * Start the server in HTTP mode (simplified endpoint wrapper)
+ * Start the server in HTTP mode with OAuth 2.1 authentication
  */
 async function startHttp(port: number = 3000) {
   const app = express();
+  const issuerUrl = new URL(getMcpPublicUrl());
 
-  app.use(express.json());
-
-  app.get("/health", (_req, res) => {
-    res.json({ status: "ok", service: "network-mcp-server" });
+  const verifyAccessToken = createJwtVerifier({
+    jwksUri: getJwksUri(),
+    issuer: getJwtIssuer(),
   });
 
-  app.post("/mcp", async (_req, res) => {
-    res.status(501).json({
-      error:
-        "HTTP mode not fully implemented. Please use stdio mode with: npm start",
-    });
+  const mcpPublicUrl = getMcpPublicUrl();
+  const authServerClientId = process.env.AUTH_SERVER_CLIENT_ID ?? "mcp-server";
+
+  const provider = createOAuthProvider({
+    authServerUrl: getAuthServerUrl(),
+    mcpPublicUrl,
+    authServerClientId,
+    verifyAccessToken,
+  });
+
+  // OAuth routes (/.well-known/oauth-authorization-server, /authorize, /token, /register)
+  app.use(mcpAuthRouter({
+    provider,
+    issuerUrl,
+  }));
+
+  app.get("/health", (_req, res) => {
+    res.json({ status: "ok", service: "network-mcp-server", mode: "http" });
+  });
+
+  app.get("/oauth/callback", (req, res) => {
+    const { code, state, error, error_description } = req.query as Record<string, string>;
+
+    if (!state) {
+      res.status(400).send("Missing state parameter");
+      return;
+    }
+
+    const pending = provider.consumePendingAuth(state);
+    if (!pending) {
+      res.status(400).send("Unknown or expired authorization session");
+      return;
+    }
+
+    const redirectUrl = new URL(pending.mcpClientRedirectUri);
+    if (error) {
+      redirectUrl.searchParams.set("error", error);
+      if (error_description) redirectUrl.searchParams.set("error_description", error_description);
+    } else if (code) {
+      redirectUrl.searchParams.set("code", code);
+    }
+    if (pending.mcpClientState) {
+      redirectUrl.searchParams.set("state", pending.mcpClientState);
+    }
+
+    res.redirect(redirectUrl.toString());
+  });
+
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
+
+  const bearerAuth = requireBearerAuth({ verifier: provider });
+
+  // MCP endpoint with bearer token auth
+  app.post("/mcp", bearerAuth, async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    let transport: StreamableHTTPServerTransport;
+
+    if (sessionId && sessions.has(sessionId)) {
+      transport = sessions.get(sessionId)!;
+    } else if (!sessionId) {
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (id) => {
+          sessions.set(id, transport);
+          console.error(`[HTTP] Session created: ${id}`);
+        },
+        onsessionclosed: (id) => {
+          sessions.delete(id);
+          console.error(`[HTTP] Session closed: ${id}`);
+        },
+      });
+
+      const server = createServer();
+      await server.connect(transport);
+    } else {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    await transport.handleRequest(req, res, req.body);
+  });
+
+  app.get("/mcp", bearerAuth, async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !sessions.has(sessionId)) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    await sessions.get(sessionId)!.handleRequest(req, res);
+  });
+
+  app.delete("/mcp", bearerAuth, async (req, res) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !sessions.has(sessionId)) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    await sessions.get(sessionId)!.handleRequest(req, res);
   });
 
   app.listen(port, () => {
-    console.error(
-      `Network MCP Server HTTP endpoint available on http://localhost:${port}/mcp`
-    );
-    console.error(`Note: For full functionality, use stdio mode: npm start`);
+    console.error(`Network MCP Server (HTTP+OAuth) on http://localhost:${port}/mcp`);
+    console.error(`Auth server: ${getAuthServerUrl()}`);
+    console.error(`OAuth metadata: http://localhost:${port}/.well-known/oauth-authorization-server`);
   });
 }
 

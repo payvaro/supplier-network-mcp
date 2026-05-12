@@ -1,20 +1,20 @@
 import { getSuppliersForBuyer, getBuyersForSupplier, createBuyerLink } from "./buyers.js";
 import { createActionableError } from "../errors.js";
 import { ResponseFormat } from "../constants.js";
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 import type { RelationshipsToolInput } from "../schemas/index.js";
 
 /**
  * Dispatch wrapper for the consolidated relationships tool
  */
-export async function handleRelationships(params: RelationshipsToolInput) {
+export async function handleRelationships(params: RelationshipsToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'relationships');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "for_buyer":
