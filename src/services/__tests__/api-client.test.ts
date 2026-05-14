@@ -797,4 +797,65 @@ describe('api-client', () => {
       expect(scoped).toBeInstanceOf(NetworkAPIClient);
     });
   });
+
+  describe('getAllBuyers includeLinks hydration (MVP-962)', () => {
+    it('hydrates buyerLinks via per-buyer fetch when includeLinks=true (list endpoint does not honor includeLinks)', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+
+      const buyersFromList = [
+        { id: 'b1', name: 'B1', clientId: 'c1' },
+        { id: 'b2', name: 'B2', clientId: 'c2' },
+      ];
+
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({
+          data: { items: buyersFromList, pagination: { hasMore: false, nextCursor: null } },
+        })
+        .mockResolvedValueOnce({
+          data: { ...buyersFromList[0], buyerLinks: [createBuyerLink({ buyerId: 'b1', supplierId: 's1' })] },
+        })
+        .mockResolvedValueOnce({
+          data: { ...buyersFromList[1], buyerLinks: [createBuyerLink({ buyerId: 'b2', supplierId: 's2' })] },
+        });
+
+      const result = await client.getAllBuyers(true);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].buyerLinks).toHaveLength(1);
+      expect(result[1].buyerLinks).toHaveLength(1);
+      // First call: list. Subsequent calls: per-buyer hydration with includeLinks=true.
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(3);
+      expect(mockAxiosInstance.get).toHaveBeenNthCalledWith(2, '/api/buyers/b1', expect.objectContaining({ params: { includeLinks: true } }));
+      expect(mockAxiosInstance.get).toHaveBeenNthCalledWith(3, '/api/buyers/b2', expect.objectContaining({ params: { includeLinks: true } }));
+    });
+
+    it('skips hydration when includeLinks=false', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+
+      mockAxiosInstance.get.mockResolvedValueOnce({
+        data: { items: [{ id: 'b1', name: 'B1', clientId: 'c1' }], pagination: { hasMore: false, nextCursor: null } },
+      });
+
+      const result = await client.getAllBuyers(false);
+
+      expect(result).toHaveLength(1);
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to summary when per-buyer hydration fails', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({
+          data: { items: [{ id: 'b1', name: 'B1', clientId: 'c1' }], pagination: { hasMore: false, nextCursor: null } },
+        })
+        .mockRejectedValueOnce(new Error('boom'));
+
+      const result = await client.getAllBuyers(true);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('b1');
+      // buyerLinks remains undefined — caller falls back to whatever the summary had.
+    });
+  });
 });

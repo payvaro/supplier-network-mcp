@@ -470,19 +470,18 @@ export class NetworkAPIClient {
     const pageSize = 100;
 
     do {
-      const params: Record<string, unknown> = { pageSize, includeLinks };
+      const params: Record<string, unknown> = { pageSize };
       if (cursor) {
         params.cursor = cursor;
       }
 
       const response = await this.client.get<Buyer[] | PaginatedResponse<Buyer>>("/api/buyers", { params });
 
-      // Handle direct array response (no pagination)
       if (Array.isArray(response.data)) {
-        return response.data;
+        allBuyers.push(...response.data);
+        break;
       }
 
-      // Handle paginated response
       if (response.data && 'items' in response.data) {
         allBuyers.push(...response.data.items);
         cursor = response.data.pagination?.hasMore && response.data.pagination?.nextCursor
@@ -493,7 +492,21 @@ export class NetworkAPIClient {
       }
     } while (cursor);
 
-    return allBuyers;
+    // The list endpoint does not honor `includeLinks` (MVP-962 / network
+    // BuyerController.java:248 — only the single-buyer endpoint honors it).
+    // Hydrate per-buyer when callers need links.
+    if (!includeLinks || allBuyers.length === 0) {
+      return allBuyers;
+    }
+
+    const hydrated = await Promise.all(
+      allBuyers.map(buyer =>
+        buyer.id
+          ? this.getBuyer(buyer.id, true).catch(() => buyer)
+          : Promise.resolve(buyer)
+      )
+    );
+    return hydrated;
   }
 
   /**
