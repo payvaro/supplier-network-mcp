@@ -892,16 +892,31 @@ export class NetworkAPIClient {
   }
 
   /**
-   * Get the acceptor(s) currently associated with a supplier (via NSR#).
+   * Get the acceptor(s) currently associated with a supplier.
+   *
+   * <p>Derived from the supplier's AcceptorIntegrations — each integration row carries the
+   * acceptor it routes to. We list the integrations, dedupe by acceptor id, and fetch each
+   * acceptor record. There is no direct `/api/suppliers/{id}/acceptors` route on the network
+   * API; an earlier version of this method called one (404), based on a misunderstanding that
+   * AcceptorSupplierRef (NSR#) was an actual edge table. It is not — see MVP-960.
    */
   async getAcceptorsForSupplier(supplierId: string): Promise<Acceptor[]> {
     try {
-      const response = await this.client.get<Acceptor[] | PaginatedResponse<Acceptor>>(
-        `/api/suppliers/${supplierId}/acceptors`,
+      const integrations = await this.listAcceptorIntegrationsForSupplier(supplierId);
+      const uniqueAcceptorIds = Array.from(
+        new Set(
+          integrations
+            .map((i) => i.networkId ?? i.acceptorId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
       );
-      if (Array.isArray(response.data)) return response.data;
-      if (response.data && "items" in response.data) return response.data.items;
-      return [];
+      if (uniqueAcceptorIds.length === 0) {
+        return [];
+      }
+      const acceptors = await Promise.all(
+        uniqueAcceptorIds.map((id) => this.getAcceptor(id).catch(() => null)),
+      );
+      return acceptors.filter((a): a is Acceptor => a !== null);
     } catch (error) {
       throw this.handleError(error);
     }

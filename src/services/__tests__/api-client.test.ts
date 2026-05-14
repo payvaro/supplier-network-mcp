@@ -858,4 +858,61 @@ describe('api-client', () => {
       // buyerLinks remains undefined — caller falls back to whatever the summary had.
     });
   });
+
+  describe('getAcceptorsForSupplier (MVP-960)', () => {
+    it('derives unique acceptors from the supplier\'s integration list', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+
+      mockAxiosInstance.get
+        // listAcceptorIntegrationsForSupplier
+        .mockResolvedValueOnce({
+          data: [
+            { acceptorIntegrationId: 'i1', networkId: 'acc-A', paymentType: 'CARD' },
+            { acceptorIntegrationId: 'i2', networkId: 'acc-A', paymentType: 'ACH' }, // dup acceptor
+            { acceptorIntegrationId: 'i3', networkId: 'acc-B', paymentType: 'CARD' },
+          ],
+        })
+        // getAcceptor(acc-A)
+        .mockResolvedValueOnce({ data: { id: 'acc-A', name: 'CPX' } })
+        // getAcceptor(acc-B)
+        .mockResolvedValueOnce({ data: { id: 'acc-B', name: 'Other' } });
+
+      const result = await client.getAcceptorsForSupplier('sup-1');
+
+      expect(result).toHaveLength(2);
+      expect(result.map((a) => a.id)).toEqual(['acc-A', 'acc-B']);
+      // 1 list call + 2 unique acceptor lookups
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(3);
+      expect(mockAxiosInstance.get).toHaveBeenNthCalledWith(1, '/api/suppliers/sup-1/acceptor-integrations');
+    });
+
+    it('returns empty when the supplier has no integrations', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+      mockAxiosInstance.get.mockResolvedValueOnce({ data: [] });
+
+      const result = await client.getAcceptorsForSupplier('sup-1');
+
+      expect(result).toEqual([]);
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips acceptors that fail to load instead of failing the whole call', async () => {
+      const client = new NetworkAPIClient('api-key', 'http://test.com');
+
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({
+          data: [
+            { acceptorIntegrationId: 'i1', networkId: 'acc-A' },
+            { acceptorIntegrationId: 'i2', networkId: 'acc-B' },
+          ],
+        })
+        .mockResolvedValueOnce({ data: { id: 'acc-A', name: 'CPX' } })
+        .mockRejectedValueOnce(new Error('acceptor B missing'));
+
+      const result = await client.getAcceptorsForSupplier('sup-1');
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('acc-A');
+    });
+  });
 });

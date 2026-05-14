@@ -72,19 +72,19 @@ Three shapes to distinguish:
 
 - **Chosen path present** → pair is payable. Name the acceptor and payment type. If the guard is not clear, flag it as a warning but keep the verdict as `PAYABLE`.
 - **No chosen path, `eliminated` non-empty** → pair is blocked *at rule evaluation*. Identify the first layer that eliminated every candidate and cite the elimination reason from the trace.
-- **No chosen path AND `eliminated` empty (both zero-length)** → two distinct root causes can produce this shape; you must disambiguate, not assume:
-  - **(a) No acceptor rules in the hierarchy.** `NETWORK_PARTNER`, `AGGREGATOR`, and entity-level scopes have no rules that match. Verdict: `BLOCKED at rule configuration (no candidates)`. Almost always means the tenant was never configured end-to-end.
-  - **(b) Rules exist but the supplier's `AcceptorSupplierRef` (`NSR#`) edge is missing.** The integration row exists in `acceptor_integrations list` but the rules engine can't see it as a candidate because the supplier→acceptor reference is absent — this is the [MVP-960](https://payvaro.atlassian.net/browse/MVP-960) bug. Confirmed when `acceptors for_supplier supplierId:<id>` returns 404 *and* `acceptor_integrations list` returns ≥1 row. Verdict: `BLOCKED — AcceptorSupplierRef (NSR#) missing for an existing integration (MVP-960)`.
+- **No chosen path AND `eliminated` empty (both zero-length)** → the API built zero candidate paths for the pair. The resolution pipeline returns this exact shape from `IntegrationResolutionPipeline.resolve` when its `candidates` input is empty. Two common upstream causes:
+  - **(a) Supplier has zero ACTIVE integrations.** Caught by step 2b; should never reach this point under normal flow.
+  - **(b) No active buyer-supplier link in the payability analysis path.** `analyzePayability` filters out inactive `BuyerLink` rows by default. Verify with `relationships for_buyer buyerId:<id>` — if the link shows `connectionStatus: ACTIVE` but no path was built, the projection that backs `getBuyerLinksByBuyerId` may be lagging.
+  - **(c) Buyer or supplier filter eliminated everything before the pipeline.** Confirm both entities still exist and are ACTIVE.
 
-  Always cross-check with `acceptor_integrations list` and `acceptors for_supplier` before declaring "no rules configured" — they have very different fixes.
+  Verdict: `BLOCKED — no payment paths produced (analyzePayability returned empty)`. This is NOT a "no rules" diagnosis — rules are evaluated downstream of path construction.
 
 ### 5. Map blocker → next action
 
 | Blocking layer | Next action |
 |----------------|-------------|
 | No buyer-supplier link | Call `relationships` with `action: link` (requires `buyerId`, `supplierId`) |
-| No acceptor rule at any scope (both-empty AND `acceptor_integrations list` returns rows AND `acceptors for_supplier` succeeds) | Call `rules` with `action: list`, `scopeType: "NETWORK_PARTNER"`, `scopeId: <partner id>` at the parent scope. Partner id isn't always visible on the buyer/link record — try `suppliers get includeLinks:true`, or ask the user which partner scope to check. (Avoid `analyze connections` for partner id — see MVP-962.) |
-| NSR# AcceptorSupplierRef missing (both-empty AND `acceptor_integrations list` returns rows AND `acceptors for_supplier` 404s) | This is MVP-960. No skill-driven fix today — a repair migration must reconstruct `NSR#` rows from `AcceptorIntegration` data. Flag to the user and link MVP-960. |
+| No payment paths produced (both-empty AND `acceptor_integrations list` returns rows AND link is ACTIVE) | Compare `relationships for_buyer` (used by support tools) against the analyze-side reader. If they disagree, the BuyerLink GSI or projection is lagging. Otherwise re-run with `requireClear:true` removed or `includeInactive:true` to surface why the analyzer is excluding the path. |
 | Supplier has zero integrations (caught in step 2b, never reaches trace) | Use `network-fix-acceptor-integration` to create one. |
 | Guard not clear | Surface the guard field from the trace; point the user at the config owner |
 | Supplier or buyer inactive | Call `suppliers get` / `buyers get` and report the status field |
