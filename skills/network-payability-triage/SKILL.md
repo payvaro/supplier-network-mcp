@@ -41,6 +41,20 @@ This skill depends on the `rules` MCP tool (action: `trace`), which was added to
 - If the user gave a UUID, use it.
 - Otherwise call `search` with the supplier name (and any known address/email fields) and pick the top match. Show confidence score; if below `0.8`, confirm with the user before proceeding.
 
+### 2b. Short-circuit: is the supplier payable to anyone?
+
+Before tracing, call `acceptor_integrations` with `action: list`, `supplierId: <id>`. If it returns zero rows, the supplier has no acceptor integration at all and is unpayable to *every* buyer — the buyer in this pair is incidental. Output:
+
+```
+Pair: <buyer name> → <supplier name>
+Verdict: BLOCKED — supplier not payable (no acceptor integrations)
+Next: network-fix-acceptor-integration  (create an integration for this supplier first)
+```
+
+Then stop. Don't run the trace — it will just return both-empty and obscure the real cause.
+
+If at least one ACTIVE integration exists, proceed to step 3.
+
 ### 3. Run the payability trace
 
 Call `rules` with:
@@ -58,14 +72,20 @@ Three shapes to distinguish:
 
 - **Chosen path present** → pair is payable. Name the acceptor and payment type. If the guard is not clear, flag it as a warning but keep the verdict as `PAYABLE`.
 - **No chosen path, `eliminated` non-empty** → pair is blocked *at rule evaluation*. Identify the first layer that eliminated every candidate and cite the elimination reason from the trace.
-- **No chosen path AND `eliminated` empty (both zero-length)** → no acceptor rules exist in the hierarchy for this pair at all — this is **`BLOCKED at rule configuration (no candidates)`**. The pair's `NETWORK_PARTNER`, `AGGREGATOR`, and entity-level scopes have no rules that match. This is different from "rules existed but got filtered" and almost always means the tenant was never configured end-to-end.
+- **No chosen path AND `eliminated` empty (both zero-length)** → the API built zero candidate paths for the pair. The resolution pipeline returns this exact shape from `IntegrationResolutionPipeline.resolve` when its `candidates` input is empty. Two common upstream causes:
+  - **(a) Supplier has zero ACTIVE integrations.** Caught by step 2b; should never reach this point under normal flow.
+  - **(b) No active buyer-supplier link in the payability analysis path.** `analyzePayability` filters out inactive `BuyerLink` rows by default. Verify with `relationships for_buyer buyerId:<id>` — if the link shows `connectionStatus: ACTIVE` but no path was built, the projection that backs `getBuyerLinksByBuyerId` may be lagging.
+  - **(c) Buyer or supplier filter eliminated everything before the pipeline.** Confirm both entities still exist and are ACTIVE.
+
+  Verdict: `BLOCKED — no payment paths produced (analyzePayability returned empty)`. This is NOT a "no rules" diagnosis — rules are evaluated downstream of path construction.
 
 ### 5. Map blocker → next action
 
 | Blocking layer | Next action |
 |----------------|-------------|
 | No buyer-supplier link | Call `relationships` with `action: link` (requires `buyerId`, `supplierId`) |
-| No acceptor rule at any scope (eliminated empty) | Call `rules` with `action: list`, `scopeType: "NETWORK_PARTNER"`, `scopeId: <partner id>` at the parent scope. Partner id isn't always visible on the buyer/link record — try `suppliers get includeLinks:true` or `analyze connections` to surface it, or ask the user which partner scope to check. |
+| No payment paths produced (both-empty AND `acceptor_integrations list` returns rows AND link is ACTIVE) | Compare `relationships for_buyer` (used by support tools) against the analyze-side reader. If they disagree, the BuyerLink GSI or projection is lagging. Otherwise re-run with `requireClear:true` removed or `includeInactive:true` to surface why the analyzer is excluding the path. |
+| Supplier has zero integrations (caught in step 2b, never reaches trace) | Use `network-fix-acceptor-integration` to create one. |
 | Guard not clear | Surface the guard field from the trace; point the user at the config owner |
 | Supplier or buyer inactive | Call `suppliers get` / `buyers get` and report the status field |
 | Other / unknown | Print the raw elimination reason and ask the user for context |
