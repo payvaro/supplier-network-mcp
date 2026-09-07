@@ -54,13 +54,13 @@ async function traceDecision(
   };
 }
 
-export async function handleRules(params: RulesToolInput) {
+export async function handleRules(params: RulesToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'rules');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case 'list':      return await listRules(params, scopedClient);

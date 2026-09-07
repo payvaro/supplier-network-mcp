@@ -6,20 +6,20 @@ import {
 } from "./workflows.js";
 import { createActionableError } from "../errors.js";
 import { ResponseFormat } from "../constants.js";
-import { getNetworkAPIClient } from "../services/api-client.js";
+import { getNetworkAPIClient, NetworkAPIClient } from "../services/api-client.js";
 import { resolveAdminScope, isAdminScopeRejection } from "../services/admin-scope.js";
 import type { MatchingToolInput } from "../schemas/index.js";
 
 /**
  * Dispatch wrapper for the consolidated matching tool
  */
-export async function handleMatching(params: MatchingToolInput) {
+export async function handleMatching(params: MatchingToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'matching');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "jobs":

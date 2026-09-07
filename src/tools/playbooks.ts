@@ -258,14 +258,14 @@ export async function diagnoseAcceptorIntegration(
   };
 }
 
-export async function handlePlaybooks(params: PlaybooksToolInput) {
+export async function handlePlaybooks(params: PlaybooksToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, "playbooks");
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
-    const client = scopedClient ?? getNetworkAPIClient();
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
+    const client = scopedClient ?? clientOverride ?? getNetworkAPIClient();
 
     switch (params.action) {
       case "audit_client": {

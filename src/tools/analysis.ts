@@ -265,13 +265,13 @@ export async function notifySlack(params: SlackNotificationInput) {
 /**
  * Dispatch wrapper for the consolidated analyze tool
  */
-export async function handleAnalyze(params: AnalyzeToolInput) {
+export async function handleAnalyze(params: AnalyzeToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'analyze');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "connections":

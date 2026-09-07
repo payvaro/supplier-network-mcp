@@ -63,13 +63,13 @@ export async function getAcceptorsForSupplier(
   };
 }
 
-export async function handleAcceptors(params: AcceptorsToolInput) {
+export async function handleAcceptors(params: AcceptorsToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, "acceptors");
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "list":

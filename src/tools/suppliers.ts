@@ -277,13 +277,13 @@ export async function getSupplierHistory(params: GetSupplierHistoryInput, client
 /**
  * Dispatch wrapper for the consolidated suppliers tool
  */
-export async function handleSuppliers(params: SuppliersToolInput) {
+export async function handleSuppliers(params: SuppliersToolInput, clientOverride?: NetworkAPIClient) {
   try {
     const scope = await resolveAdminScope(params, 'suppliers');
     if (isAdminScopeRejection(scope)) return scope;
     const scopedClient = scope.clientId
-      ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-      : undefined;
+      ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+      : clientOverride;
 
     switch (params.action) {
       case "list":
@@ -431,12 +431,12 @@ export async function updateSupplierExternalRefs(
 /**
  * Dispatch wrapper for the consolidated search tool (admin-override aware)
  */
-export async function handleSearch(params: SearchToolInput) {
+export async function handleSearch(params: SearchToolInput, clientOverride?: NetworkAPIClient) {
   const scope = await resolveAdminScope(params, 'search');
   if (isAdminScopeRejection(scope)) return scope;
   const scopedClient = scope.clientId
-    ? getNetworkAPIClient().withClientIdOverride(scope.clientId)
-    : undefined;
+    ? (clientOverride ?? getNetworkAPIClient()).withClientIdOverride(scope.clientId)
+    : clientOverride;
 
   return await searchSuppliers({
     name: params.name,

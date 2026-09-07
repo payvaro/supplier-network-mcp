@@ -14,6 +14,34 @@ export function isAdminMode(): boolean {
   return process.env[NETWORK_ADMIN_MODE_ENV] === "true";
 }
 
+// OAuth / HTTP mode configuration
+export const AUTH_SERVER_URL_ENV = "AUTH_SERVER_URL";
+export const JWKS_URI_ENV = "JWKS_URI";
+export const JWT_ISSUER_ENV = "JWT_ISSUER";
+export const MCP_PUBLIC_URL_ENV = "MCP_PUBLIC_URL";
+
+// Port 8081, not 8080: under the local `pv` stack 8080 is the Network API and the auth
+// server is published on 8081. The old default pointed the OAuth flow straight at the API
+// it was trying to get a token for.
+export function getAuthServerUrl(): string {
+  return process.env[AUTH_SERVER_URL_ENV] ?? "http://localhost:8081/auth";
+}
+
+export function getJwksUri(): string {
+  return process.env[JWKS_URI_ENV] ?? `${getAuthServerUrl()}/.well-known/jwks.json`;
+}
+
+// No default. Access tokens are minted by Cognito, so `iss` is the user pool URL and not the
+// auth server's -- see resolveJwtIssuer in src/auth/issuer.ts, which discovers it when this
+// is unset.
+export function getJwtIssuer(): string | undefined {
+  return process.env[JWT_ISSUER_ENV];
+}
+
+export function getMcpPublicUrl(): string {
+  return process.env[MCP_PUBLIC_URL_ENV] ?? "http://localhost:3000";
+}
+
 // Slack Configuration
 export const DEFAULT_SLACK_WEBHOOK_URL = process.env.SLACK_WEBHOOK_URL || "";
 
