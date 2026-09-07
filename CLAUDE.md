@@ -24,6 +24,27 @@ npm run start:http   # Start in HTTP mode on port 3000 (testing)
 - `NETWORK_ADMIN_MODE` - Optional. When set to `"true"`, consolidated tools accept an `asClientId` field to override `x-client-id` per request. Requires the configured API key to be an admin token on the Network API side.
 - `SLACK_WEBHOOK_URL` - Optional. For Slack notifications
 
+### HTTP mode (OAuth) only
+
+- `AUTH_SERVER_URL` - Auth server base URL. Defaults to `http://localhost:8081/auth` (under the
+  local `pv` stack 8080 is the Network API; auth-server is published on 8081).
+- `JWKS_URI` - Defaults to `${AUTH_SERVER_URL}/.well-known/jwks.json`, which proxies the Cognito
+  user pool's keys.
+- `JWT_ISSUER` - Expected `iss`. **No default.** Access tokens are minted by Cognito, so the issuer
+  is the user pool URL (`https://cognito-idp.<region>.amazonaws.com/<poolId>`), never the auth
+  server's own URL. When unset it is read from `${AUTH_SERVER_URL}/.well-known/openid-configuration`
+  at startup; startup fails loudly if that cannot be reached.
+- `MCP_PUBLIC_URL` - This server's public URL, used for OAuth metadata and the `/oauth/callback`
+  bridge. Defaults to `http://localhost:3000`; the auth server's `mcp-server` client only accepts
+  `:3000` and `:3001` callbacks, so a different port needs `OAUTH2_REDIRECT_URIS` widened there.
+- `AUTH_SERVER_CLIENT_ID` - Pre-registered client on the auth server. Defaults to `mcp-server`.
+
+Tenant scope for an authenticated user comes from the token, not from `NETWORK_CLIENT_ID`: a real
+Cognito access token carries no `custom:clientId` (custom attributes are ID-token-only), so the
+client id is read from the `CLIENT_<uuid>` entry in `cognito:groups` - the same claim the Network
+API's `getPrimaryClientId` reads. A token naming no client sends no `x-client-id` at all rather
+than falling back to the server-wide default.
+
 ## Architecture
 
 ```

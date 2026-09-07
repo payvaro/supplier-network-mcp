@@ -14,6 +14,7 @@ import {
 import express from "express";
 import { createOAuthProvider } from "./auth/oauth-provider.js";
 import { createJwtVerifier } from "./auth/jwt-verifier.js";
+import { resolveJwtIssuer } from "./auth/issuer.js";
 import { createAuthenticatedClient } from "./services/api-client.js";
 import {
   getAuthServerUrl,
@@ -786,7 +787,12 @@ function createServer() {
     const authClient = extra.authInfo
       ? createAuthenticatedClient(
           extra.authInfo.token,
-          (extra.authInfo.extra as Record<string, unknown>)?.tenantClientId as string ?? extra.authInfo.clientId,
+          // Undefined, not "", when the token names no client: see
+          // NetworkAPIClient.forAuthenticatedUser for why an empty value must not become a
+          // fallback to the server-wide NETWORK_CLIENT_ID.
+          ((extra.authInfo.extra as Record<string, unknown> | undefined)?.tenantClientId as
+            | string
+            | undefined) || undefined,
         )
       : undefined;
 
@@ -951,9 +957,14 @@ async function startHttp(port: number = 3000) {
   const app = express();
   const issuerUrl = new URL(getMcpPublicUrl());
 
+  // Resolved before anything is served: an unreachable auth server or a missing issuer has
+  // to fail loudly at startup, not as a 401 on every tool call once a user has signed in.
+  const jwtIssuer = await resolveJwtIssuer(getAuthServerUrl(), getJwtIssuer());
+  console.error(`[HTTP] Verifying access tokens issued by ${jwtIssuer}`);
+
   const verifyAccessToken = createJwtVerifier({
     jwksUri: getJwksUri(),
-    issuer: getJwtIssuer(),
+    issuer: jwtIssuer,
   });
 
   const mcpPublicUrl = getMcpPublicUrl();

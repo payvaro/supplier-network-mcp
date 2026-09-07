@@ -153,6 +153,39 @@ export class NetworkAPIClient {
     return clone;
   }
 
+  /**
+   * A client for one authenticated HTTP-mode user: their own bearer token, and only the
+   * tenant their token actually proves.
+   *
+   * Deliberately not the constructor. The constructor falls back to NETWORK_API_KEY and
+   * NETWORK_CLIENT_ID when its arguments are empty, which is right for stdio mode (one
+   * static operator identity) and wrong here: a token that names no client would inherit
+   * the deployment's default tenant, so an admin user's calls would silently be scoped to
+   * whichever client the server was configured with rather than their own. Omitting
+   * `x-client-id` entirely is the honest signal -- the Network API resolves tenancy from
+   * the token itself for non-admin callers, and answers an admin write that needs a scope
+   * with a 400 that says so.
+   */
+  public static forAuthenticatedUser(
+    accessToken: string,
+    tenantClientId?: string
+  ): NetworkAPIClient {
+    const instance: NetworkAPIClient = Object.create(NetworkAPIClient.prototype);
+    instance.apiKey = accessToken;
+    instance.baseURL = process.env.NETWORK_API_BASE_URL || DEFAULT_BASE_URL;
+    instance.clientId = tenantClientId ?? "";
+    instance.client = axios.create({
+      baseURL: instance.baseURL,
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken && { [AUTH_HEADER]: `Bearer ${accessToken}` }),
+        ...(instance.clientId && { [CLIENT_ID_HEADER]: instance.clientId }),
+      },
+      timeout: 30000,
+    });
+    return instance;
+  }
+
   constructor(apiKey?: string, baseURL?: string, clientId?: string) {
     const rawApiKey = apiKey || process.env.NETWORK_API_KEY || "";
     this.baseURL = baseURL || process.env.NETWORK_API_BASE_URL || DEFAULT_BASE_URL;
@@ -1188,9 +1221,15 @@ export function getNetworkAPIClient(apiKey?: string, baseURL?: string, clientId?
 }
 
 /**
- * Create a per-request API client using the user's own bearer token and tenant client ID.
- * Used in HTTP/OAuth mode where each user authenticates individually.
+ * Create a per-request API client using the user's own bearer token and the tenant their
+ * token proves. Used in HTTP/OAuth mode where each user authenticates individually.
+ *
+ * `tenantClientId` is optional on purpose: a platform-admin token names no single client,
+ * and inventing one from the environment would scope that user to the wrong tenant.
  */
-export function createAuthenticatedClient(accessToken: string, tenantClientId: string): NetworkAPIClient {
-  return new NetworkAPIClient(accessToken, undefined, tenantClientId);
+export function createAuthenticatedClient(
+  accessToken: string,
+  tenantClientId?: string
+): NetworkAPIClient {
+  return NetworkAPIClient.forAuthenticatedUser(accessToken, tenantClientId);
 }
