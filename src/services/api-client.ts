@@ -470,19 +470,18 @@ export class NetworkAPIClient {
     const pageSize = 100;
 
     do {
-      const params: Record<string, unknown> = { pageSize, includeLinks };
+      const params: Record<string, unknown> = { pageSize };
       if (cursor) {
         params.cursor = cursor;
       }
 
       const response = await this.client.get<Buyer[] | PaginatedResponse<Buyer>>("/api/buyers", { params });
 
-      // Handle direct array response (no pagination)
       if (Array.isArray(response.data)) {
-        return response.data;
+        allBuyers.push(...response.data);
+        break;
       }
 
-      // Handle paginated response
       if (response.data && 'items' in response.data) {
         allBuyers.push(...response.data.items);
         cursor = response.data.pagination?.hasMore && response.data.pagination?.nextCursor
@@ -493,7 +492,21 @@ export class NetworkAPIClient {
       }
     } while (cursor);
 
-    return allBuyers;
+    // The list endpoint does not honor `includeLinks` (MVP-962 / network
+    // BuyerController.java:248 — only the single-buyer endpoint honors it).
+    // Hydrate per-buyer when callers need links.
+    if (!includeLinks || allBuyers.length === 0) {
+      return allBuyers;
+    }
+
+    const hydrated = await Promise.all(
+      allBuyers.map(buyer =>
+        buyer.id
+          ? this.getBuyer(buyer.id, true).catch(() => buyer)
+          : Promise.resolve(buyer)
+      )
+    );
+    return hydrated;
   }
 
   /**
@@ -879,16 +892,31 @@ export class NetworkAPIClient {
   }
 
   /**
-   * Get the acceptor(s) currently associated with a supplier (via NSR#).
+   * Get the acceptor(s) currently associated with a supplier.
+   *
+   * <p>Derived from the supplier's AcceptorIntegrations — each integration row carries the
+   * acceptor it routes to. We list the integrations, dedupe by acceptor id, and fetch each
+   * acceptor record. There is no direct `/api/suppliers/{id}/acceptors` route on the network
+   * API; an earlier version of this method called one (404), based on a misunderstanding that
+   * AcceptorSupplierRef (NSR#) was an actual edge table. It is not — see MVP-960.
    */
   async getAcceptorsForSupplier(supplierId: string): Promise<Acceptor[]> {
     try {
-      const response = await this.client.get<Acceptor[] | PaginatedResponse<Acceptor>>(
-        `/api/suppliers/${supplierId}/acceptors`,
+      const integrations = await this.listAcceptorIntegrationsForSupplier(supplierId);
+      const uniqueAcceptorIds = Array.from(
+        new Set(
+          integrations
+            .map((i) => i.networkId ?? i.acceptorId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
       );
-      if (Array.isArray(response.data)) return response.data;
-      if (response.data && "items" in response.data) return response.data.items;
-      return [];
+      if (uniqueAcceptorIds.length === 0) {
+        return [];
+      }
+      const acceptors = await Promise.all(
+        uniqueAcceptorIds.map((id) => this.getAcceptor(id).catch(() => null)),
+      );
+      return acceptors.filter((a): a is Acceptor => a !== null);
     } catch (error) {
       throw this.handleError(error);
     }

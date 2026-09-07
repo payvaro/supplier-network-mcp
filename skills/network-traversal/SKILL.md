@@ -25,7 +25,11 @@ Trigger when the user says any of:
 3. **Tool-first.** Call tools by name.
 4. **Output.** Terse lists with counts; don't dump full records unless asked.
 
-**`buyerLinkCount` on `buyers list` is unreliable** — it sometimes reads 0 even when active links exist. Never use it to conclude "this buyer has no suppliers." Always call `relationships for_buyer` to get the real list.
+**Summary `counts` fields are unreliable** — confirmed by MVP-962. The same supplier/buyer can return different counter values across `search`, `buyers list`, `suppliers list`, `suppliers get`, and the underlying authoritative tables. Treat every `counts.*` field as a hint, never a fact:
+
+- `buyerLinkCount` / `activeBuyerLinkCount` on a buyer summary may read 0 when active links exist. Confirm with `relationships for_buyer`.
+- `acceptorIntegrationCount` / `activeAcceptorIntegrationCount` on a supplier summary may read 0 when an integration exists. Confirm with `acceptor_integrations list supplierId:<id>`.
+- Don't conclude "X has no Y" from a counter alone. Always resolve to the authoritative collection first.
 
 ## Starting-entity resolution
 
